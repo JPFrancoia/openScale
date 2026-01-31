@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Anchor icon representing US Navy method -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M12,2C11.45,2 11,2.45 11,3V4.29C9.24,4.68 8,6.2 8,8H10C10,6.9 10.9,6 12,6C13.1,6 14,6.9 14,8H16C16,6.2 14.76,4.68 13,4.29V3C13,2.45 12.55,2 12,2ZM7,9V11H9V18C9,18.55 9.45,19 10,19H11V21.5L12,22.5L13,21.5V19H14C14.55,19 15,18.55 15,18V11H17V9H7ZM11,11H13V17H11V11ZM4,13V15H6V13H4ZM18,13V15H20V13H18Z"/>
+</vector>

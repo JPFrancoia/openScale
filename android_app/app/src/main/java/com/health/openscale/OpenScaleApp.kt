@@ -67,6 +67,7 @@ fun getDefaultMeasurementTypes(): List<MeasurementType> {
         MeasurementType(key = MeasurementTypeKey.CALIPER_2, unit = UnitType.CM, color = 0xFFFFE082.toInt(), icon = MeasurementTypeIcon.IC_CALIPER2, isEnabled = true),
         MeasurementType(key = MeasurementTypeKey.CALIPER_3, unit = UnitType.CM, color = 0xFFFFCC80.toInt(), icon = MeasurementTypeIcon.IC_CALIPER3, isEnabled = true),
         MeasurementType(key = MeasurementTypeKey.CALIPER, unit = UnitType.PERCENT, color = 0xFFFB8C00.toInt(), icon = MeasurementTypeIcon.IC_FAT_CALIPER, isDerived = true, isEnabled = true),
+        MeasurementType(key = MeasurementTypeKey.FAT_US_NAVY, unit = UnitType.PERCENT, color = 0xFF0D47A1.toInt(), icon = MeasurementTypeIcon.IC_FAT_US_NAVY, isDerived = true, isEnabled = true),
         MeasurementType(key = MeasurementTypeKey.BMR, unit = UnitType.KCAL, color = 0xFFAB47BC.toInt(), icon = MeasurementTypeIcon.IC_BMR, isDerived = true, isEnabled = true),
         MeasurementType(key = MeasurementTypeKey.TDEE, unit = UnitType.KCAL, color = 0xFF26A69A.toInt(), icon = MeasurementTypeIcon.IC_TDEE, isDerived = true, isEnabled = true),
         MeasurementType(key = MeasurementTypeKey.CALORIES, unit = UnitType.KCAL, color = 0xFF4CAF50.toInt(), icon = MeasurementTypeIcon.IC_CALORIES, isEnabled = true),
@@ -125,7 +126,9 @@ class OpenScaleApp : Application(), Configuration.Provider {
                     settingsFacade.setFirstAppStartCompleted(false)
                     LogManager.i(TAG, "Default measurement types inserted and first start marked as completed.")
                 } else {
-                    LogManager.d(TAG, "Not the first app start. Default data should already exist.")
+                    LogManager.d(TAG, "Not the first app start. Syncing any new default measurement types...")
+                    // Always sync default types to ensure new types are added for existing users
+                    databaseRepository.insertAllMeasurementTypes(getDefaultMeasurementTypes())
                 }
             } catch (e: Exception) {
                 LogManager.e(TAG, "Error during first-start data initialization", e)

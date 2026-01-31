@@ -321,6 +321,7 @@ enum class MeasurementTypeIcon(val resource: IconResource) {
     IC_CALIPER2(IconResource.PainterResource(R.drawable.ic_caliper2)),
     IC_CALIPER3(IconResource.PainterResource(R.drawable.ic_caliper3)),
     IC_FAT_CALIPER(IconResource.PainterResource(R.drawable.ic_fat_caliper)),
+    IC_FAT_US_NAVY(IconResource.PainterResource(R.drawable.ic_fat_us_navy)),
     IC_BMR(IconResource.PainterResource(R.drawable.ic_bmr)),
     IC_TDEE(IconResource.PainterResource(R.drawable.ic_tdee)),
     IC_CALORIES(IconResource.PainterResource(R.drawable.ic_calories)),
@@ -405,6 +406,7 @@ enum class MeasurementTypeKey(
     COMMENT(26, R.string.measurement_type_comment, listOf(UnitType.NONE), listOf(InputFieldType.TEXT)),
     USER(27, R.string.measurement_type_user, listOf(UnitType.NONE), listOf(InputFieldType.USER)),
     HEART_RATE(28, R.string.measurement_type_heart_rate, listOf(UnitType.BPM), listOf(InputFieldType.INT)),
+    FAT_US_NAVY(29, R.string.measurement_type_fat_us_navy, listOf(UnitType.PERCENT), listOf(InputFieldType.FLOAT)),
     CUSTOM(99, R.string.measurement_type_custom_default_name, UnitType.entries.toList(), listOf(InputFieldType.FLOAT, InputFieldType.INT, InputFieldType.TEXT, InputFieldType.DATE, InputFieldType.TIME));
 }
 
