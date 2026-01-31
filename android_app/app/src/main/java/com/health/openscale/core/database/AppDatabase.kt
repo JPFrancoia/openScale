@@ -47,7 +47,7 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, AppDatabase.Companion.DATABASE_NAME)
-            .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+            .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
             .build()
 
     @Provides
@@ -74,7 +74,7 @@ object DatabaseModule {
         MeasurementValue::class,
         MeasurementType::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 @TypeConverters(DatabaseConverters::class)
@@ -374,6 +374,53 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
         try {
             defaultTypesInOrder.forEachIndexed { index, measurementType ->
                 val displayOrder = index + 1 // Room/SQL indices are often 1-based
+                db.execSQL(
+                    "UPDATE MeasurementType SET displayOrder = ? WHERE `key` = ?",
+                    arrayOf<Any?>(displayOrder, measurementType.key.name)
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+}
+
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Step 1: Add FAT_US_NAVY if it's missing, using INSERT OR IGNORE.
+        val fatUsNavyType = getDefaultMeasurementTypes().find { it.key == MeasurementTypeKey.FAT_US_NAVY }
+
+        if (fatUsNavyType != null) {
+            db.execSQL(
+                """
+                INSERT OR IGNORE INTO MeasurementType 
+                    (`key`, `name`, `color`, `icon`, `unit`, `inputType`, `displayOrder`,
+                     `isDerived`, `isEnabled`, `isPinned`, `isOnRightYAxis`)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """.trimIndent(),
+                arrayOf<Any?>(
+                    fatUsNavyType.key.name,
+                    null,
+                    fatUsNavyType.color,
+                    fatUsNavyType.icon.name,
+                    fatUsNavyType.unit.name,
+                    fatUsNavyType.inputType.name,
+                    -1, // Use a temporary displayOrder to avoid conflicts
+                    if (fatUsNavyType.isDerived) 1 else 0,
+                    if (fatUsNavyType.isEnabled) 1 else 0,
+                    if (fatUsNavyType.isPinned) 1 else 0,
+                    if (fatUsNavyType.isOnRightYAxis) 1 else 0
+                )
+            )
+        }
+
+        // Step 2: Re-order ALL existing types to match the getDefaultMeasurementTypes() list.
+        val defaultTypesInOrder = getDefaultMeasurementTypes()
+        db.beginTransaction()
+        try {
+            defaultTypesInOrder.forEachIndexed { index, measurementType ->
+                val displayOrder = index + 1
                 db.execSQL(
                     "UPDATE MeasurementType SET displayOrder = ? WHERE `key` = ?",
                     arrayOf<Any?>(displayOrder, measurementType.key.name)

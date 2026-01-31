@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.log10
 
 /**
  * Repository class for accessing and managing data in the application's database.
@@ -357,6 +358,7 @@ class DatabaseRepository @Inject constructor(
         val (caliper1Value, caliper1UnitType) = findValueAndUnit(MeasurementTypeKey.CALIPER_1)
         val (caliper2Value, caliper2UnitType) = findValueAndUnit(MeasurementTypeKey.CALIPER_2)
         val (caliper3Value, caliper3UnitType) = findValueAndUnit(MeasurementTypeKey.CALIPER_3)
+        val (neckValue, neckUnitType) = findValueAndUnit(MeasurementTypeKey.NECK)
 
         // --- CONVERT VALUES TO REQUIRED UNITS FOR CALCULATIONS ---
 
@@ -420,6 +422,15 @@ class DatabaseRepository @Inject constructor(
             }
         } else null
 
+        // Convert neck circumference to Centimeters (CM)
+        val neckCm: Float? = if (neckValue != null && neckUnitType != null) {
+            when (neckUnitType) {
+                UnitType.CM -> neckValue
+                UnitType.INCH -> ConverterUtils.toCentimeter(neckValue, MeasureUnit.INCH)
+                else -> neckValue
+            }
+        } else null
+
         // User's height is assumed to be stored in CM in the User object
         val userHeightCm = user.heightCm
 
@@ -451,6 +462,14 @@ class DatabaseRepository @Inject constructor(
             ageYears = ageAtMeasurementYears,
             gender = user.gender
         ).also { saveOrUpdateDerivedValue(it, MeasurementTypeKey.CALIPER) }
+
+        processFatUsNavyCalculation(
+            waistCm = waistCm,
+            neckCm = neckCm,
+            heightCm = userHeightCm,
+            hipsCm = hipsCm,
+            gender = user.gender
+        ).also { saveOrUpdateDerivedValue(it, MeasurementTypeKey.FAT_US_NAVY) }
 
         val endTime = System.nanoTime()
         val durationMillis = (endTime - startTime) / 1_000_000
@@ -593,6 +612,75 @@ class DatabaseRepository @Inject constructor(
             //LogManager.w(CALC_PROCESS_TAG, "Calculated Fat Percentage ($fatPercentage%) is outside the expected physiological range (1–70%).")
             fatPercentage
         }
+    }
+
+    /**
+     * Calculates body fat percentage using the U.S. Navy circumference method.
+     *
+     * Formula for males (measurements in inches):
+     *   %BF = 86.010 * log10(waist - neck) - 70.041 * log10(height) + 36.76
+     *
+     * Formula for females (measurements in inches):
+     *   %BF = 163.205 * log10(waist + hips - neck) - 97.684 * log10(height) - 78.387
+     *
+     * Input measurements are in centimeters and converted to inches internally.
+     *
+     * @param waistCm Waist circumference in centimeters
+     * @param neckCm Neck circumference in centimeters
+     * @param heightCm Body height in centimeters
+     * @param hipsCm Hip circumference in centimeters (required for females only)
+     * @param gender User's gender (MALE or FEMALE)
+     * @return Body fat percentage, or null if required measurements are missing
+     */
+    private fun processFatUsNavyCalculation(
+        waistCm: Float?,
+        neckCm: Float?,
+        heightCm: Float?,
+        hipsCm: Float?,
+        gender: GenderType
+    ): Float? {
+        // Validate required measurements
+        if (waistCm == null || waistCm <= 0f ||
+            neckCm == null || neckCm <= 0f ||
+            heightCm == null || heightCm <= 0f) {
+            return null
+        }
+
+        // For females, hips measurement is required
+        if (gender == GenderType.FEMALE && (hipsCm == null || hipsCm <= 0f)) {
+            return null
+        }
+
+        // Convert centimeters to inches (the US Navy formula uses inches)
+        val waistIn = waistCm / 2.54f
+        val neckIn = neckCm / 2.54f
+        val heightIn = heightCm / 2.54f
+        val hipsIn = hipsCm?.let { it / 2.54f }
+
+        // Calculate circumference difference (must be positive for valid log calculation)
+        val circumferenceDiff = when (gender) {
+            GenderType.MALE -> waistIn - neckIn
+            GenderType.FEMALE -> waistIn + hipsIn!! - neckIn
+        }
+
+        if (circumferenceDiff <= 0f) {
+            LogManager.w(CALC_PROCESS_TAG, "Fat US Navy calculation skipped: circumference difference ($circumferenceDiff) is not positive.")
+            return null
+        }
+
+        val fatPercentage = when (gender) {
+            GenderType.MALE -> {
+                86.010f * log10(circumferenceDiff) -
+                70.041f * log10(heightIn) + 36.76f
+            }
+            GenderType.FEMALE -> {
+                163.205f * log10(circumferenceDiff) -
+                97.684f * log10(heightIn) - 78.387f
+            }
+        }
+
+        // Return result, clamped to physiological range
+        return fatPercentage.coerceIn(1.0f, 70.0f)
     }
 }
 

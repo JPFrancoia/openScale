@@ -67,6 +67,7 @@ fun getDefaultMeasurementTypes(): List<MeasurementType> {
         MeasurementType(key = MeasurementTypeKey.CALIPER_2, unit = UnitType.CM, color = 0xFFFFE082.toInt(), icon = MeasurementTypeIcon.IC_CALIPER2, isEnabled = true),
         MeasurementType(key = MeasurementTypeKey.CALIPER_3, unit = UnitType.CM, color = 0xFFFFCC80.toInt(), icon = MeasurementTypeIcon.IC_CALIPER3, isEnabled = true),
         MeasurementType(key = MeasurementTypeKey.CALIPER, unit = UnitType.PERCENT, color = 0xFFFB8C00.toInt(), icon = MeasurementTypeIcon.IC_FAT_CALIPER, isDerived = true, isEnabled = true),
+        MeasurementType(key = MeasurementTypeKey.FAT_US_NAVY, unit = UnitType.PERCENT, color = 0xFF0D47A1.toInt(), icon = MeasurementTypeIcon.IC_FAT_US_NAVY, isDerived = true, isEnabled = true),
         MeasurementType(key = MeasurementTypeKey.BMR, unit = UnitType.KCAL, color = 0xFFAB47BC.toInt(), icon = MeasurementTypeIcon.IC_BMR, isDerived = true, isEnabled = true),
         MeasurementType(key = MeasurementTypeKey.TDEE, unit = UnitType.KCAL, color = 0xFF26A69A.toInt(), icon = MeasurementTypeIcon.IC_TDEE, isDerived = true, isEnabled = true),
         MeasurementType(key = MeasurementTypeKey.HEART_RATE, inputType = InputFieldType.INT, unit = UnitType.BPM, color = 0xFFE91E63.toInt(), icon = MeasurementTypeIcon.IC_M_HEART_RATE, isEnabled = true),

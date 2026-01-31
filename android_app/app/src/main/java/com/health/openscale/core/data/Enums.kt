@@ -321,6 +321,7 @@ enum class MeasurementTypeIcon(val resource: IconResource) {
     IC_CALIPER2(IconResource.PainterResource(R.drawable.ic_caliper2)),
     IC_CALIPER3(IconResource.PainterResource(R.drawable.ic_caliper3)),
     IC_FAT_CALIPER(IconResource.PainterResource(R.drawable.ic_fat_caliper)),
+    IC_FAT_US_NAVY(IconResource.PainterResource(R.drawable.ic_fat_us_navy)),
     IC_BMR(IconResource.PainterResource(R.drawable.ic_bmr)),
     IC_TDEE(IconResource.PainterResource(R.drawable.ic_tdee)),
     IC_CALORIES(IconResource.PainterResource(R.drawable.ic_calories)),
@@ -400,11 +401,12 @@ enum class MeasurementTypeKey(
     BMR(21, R.string.measurement_type_bmr, listOf(UnitType.KCAL), listOf(InputFieldType.FLOAT)),
     TDEE(22, R.string.measurement_type_tdee, listOf(UnitType.KCAL), listOf(InputFieldType.FLOAT)),
     HEART_RATE(23, R.string.measurement_type_heart_rate, listOf(UnitType.BPM), listOf(InputFieldType.INT)),
-    CALORIES(24, R.string.measurement_type_calories, listOf(UnitType.KCAL), listOf(InputFieldType.FLOAT)),
-    DATE(25, R.string.measurement_type_date, listOf(UnitType.NONE), listOf(InputFieldType.DATE)),
-    TIME(26, R.string.measurement_type_time, listOf(UnitType.NONE), listOf(InputFieldType.TIME)),
-    COMMENT(27, R.string.measurement_type_comment, listOf(UnitType.NONE), listOf(InputFieldType.TEXT)),
-    USER(28, R.string.measurement_type_user, listOf(UnitType.NONE), listOf(InputFieldType.USER)),
+    FAT_US_NAVY(24, R.string.measurement_type_fat_us_navy, listOf(UnitType.PERCENT), listOf(InputFieldType.FLOAT)),
+    CALORIES(25, R.string.measurement_type_calories, listOf(UnitType.KCAL), listOf(InputFieldType.FLOAT)),
+    DATE(26, R.string.measurement_type_date, listOf(UnitType.NONE), listOf(InputFieldType.DATE)),
+    TIME(27, R.string.measurement_type_time, listOf(UnitType.NONE), listOf(InputFieldType.TIME)),
+    COMMENT(28, R.string.measurement_type_comment, listOf(UnitType.NONE), listOf(InputFieldType.TEXT)),
+    USER(29, R.string.measurement_type_user, listOf(UnitType.NONE), listOf(InputFieldType.USER)),
     CUSTOM(99, R.string.measurement_type_custom_default_name, UnitType.entries.toList(), listOf(InputFieldType.FLOAT, InputFieldType.INT, InputFieldType.TEXT, InputFieldType.DATE, InputFieldType.TIME));
 }
 
