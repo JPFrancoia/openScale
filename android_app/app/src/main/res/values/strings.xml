@@ -359,8 +359,10 @@
     <string name="developer_section_title">Developer</string>
     <string name="danger_zone_title">Danger Zone</string>
 
+    <!-- Scale Configuration (generic, shown when a handler declares config fields) -->
+    <string name="scale_configuration_title">Scale Configuration</string>
+
     <!-- S400 Scale Configuration -->
-    <string name="s400_configuration_title">S400 Configuration</string>
     <string name="s400_bind_key_label">BLE Bind Key</string>
     <string name="s400_bind_key_placeholder">32-character hex key</string>
     <string name="s400_bind_key_description">The Xiaomi S400 scale requires a BLE bind key for decryption. Extract this key from Xiaomi Cloud using the Xiaomi Cloud Tokens Extractor tool.</string>

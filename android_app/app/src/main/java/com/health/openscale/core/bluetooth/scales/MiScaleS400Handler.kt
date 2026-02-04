@@ -34,6 +34,8 @@ package com.health.openscale.core.bluetooth.scales
 
 import android.bluetooth.le.ScanResult
 import android.os.ParcelUuid
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Key
 import com.health.openscale.R
 import com.health.openscale.core.bluetooth.data.ScaleMeasurement
 import com.health.openscale.core.bluetooth.data.ScaleUser
@@ -72,6 +74,19 @@ class MiScaleS400Handler : ScaleDeviceHandler() {
 
     // Track if we've warned about missing configuration
     private var warnedMissingConfig = false
+
+    override fun configFields(): List<ScaleConfigField> = listOf(
+        ScaleConfigField(
+            key = SETTINGS_KEY_BIND_KEY,
+            labelRes = R.string.s400_bind_key_label,
+            descriptionRes = R.string.s400_bind_key_description,
+            placeholderRes = R.string.s400_bind_key_placeholder,
+            errorRes = R.string.s400_bind_key_error,
+            icon = Icons.Default.Key,
+            maxLength = 32,
+            inputFilter = InputFilter.HEX,
+        )
+    )
 
     override fun supportFor(device: ScannedDeviceInfo): DeviceSupport? {
         val name = device.name.uppercase(Locale.ROOT)
