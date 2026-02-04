@@ -118,20 +118,21 @@ class BluetoothFacade @Inject constructor(
         }
     }
 
-    // --- S400 Configuration ---
-    // S400 bind key is stored per-device, so we need to observe the saved device address
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val s400BindKey: StateFlow<String> = savedDevice
-        .flatMapLatest { device ->
-            device?.address?.let { addr ->
-                settingsFacade.observeS400BindKey(addr)
-            } ?: flowOf("")
-        }
-        .stateIn(scope, SharingStarted.WhileSubscribed(5000), "")
+    // --- Generic driver settings ---
+    // Reads/writes per-device handler settings using the same key format as FacadeDriverSettings:
+    // "ble/{handlerNamespace}/{deviceAddress}/{key}"
 
-    suspend fun setS400BindKey(bindKey: String) {
-        val address = savedDevice.value?.address ?: return
-        settingsFacade.saveS400BindKey(address, bindKey)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeDriverSetting(handlerNamespace: String, key: String): Flow<String> {
+        return savedDevice.flatMapLatest { device ->
+            val addr = device?.address ?: return@flatMapLatest flowOf("")
+            settingsFacade.observeSetting("ble/$handlerNamespace/$addr/$key", "")
+        }
+    }
+
+    suspend fun saveDriverSetting(handlerNamespace: String, key: String, value: String) {
+        val device = savedDevice.value ?: return
+        settingsFacade.saveSetting("ble/$handlerNamespace/${device.address}/$key", value)
     }
 
     // --- Current user context ---

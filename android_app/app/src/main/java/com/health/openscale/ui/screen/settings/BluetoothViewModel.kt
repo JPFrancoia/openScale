@@ -42,6 +42,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.health.openscale.R
 import com.health.openscale.core.bluetooth.BluetoothEvent
+import com.health.openscale.core.bluetooth.scales.MiScaleS400Handler
 import com.health.openscale.core.bluetooth.scales.TuningProfile
 import com.health.openscale.core.facade.BluetoothFacade
 import com.health.openscale.core.facade.SettingsFacade
@@ -50,7 +51,10 @@ import com.health.openscale.ui.shared.SnackbarEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -89,8 +93,11 @@ class BluetoothViewModel @Inject constructor(
     val smartAssignmentTolerancePercent = settingsFacade.smartAssignmentTolerancePercent
     val smartAssignmentIgnoreOutsideTolerance = settingsFacade.smartAssignmentIgnoreOutsideTolerance
 
-    // S400 configuration
-    val s400BindKey = bt.s400BindKey
+    // S400 configuration (reads/writes via generic driver settings)
+    private val S400_NAMESPACE = "MiScaleS400Handler"
+    val s400BindKey: StateFlow<String> = bt.observeDriverSetting(
+        S400_NAMESPACE, MiScaleS400Handler.SETTINGS_KEY_BIND_KEY
+    ).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     fun setSmartAssignmentEnabled(enabled: Boolean) = viewModelScope.launch {
         settingsFacade.setSmartAssignmentEnabled(enabled)
@@ -105,7 +112,7 @@ class BluetoothViewModel @Inject constructor(
     }
 
     fun setS400BindKey(bindKey: String) = viewModelScope.launch {
-        bt.setS400BindKey(bindKey)
+        bt.saveDriverSetting(S400_NAMESPACE, MiScaleS400Handler.SETTINGS_KEY_BIND_KEY, bindKey)
     }
 
     // --- Snackbar events for UI ---
