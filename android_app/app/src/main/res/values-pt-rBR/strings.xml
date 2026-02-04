@@ -589,4 +589,26 @@
     <string name="export_error_cannot_create_file">Falha na exportação: Não foi possível criar o arquivo.</string>
     <string name="export_error_generic">Erro durante a exportação: %1$s</string>
     <string name="export_no_users_available">Nenhum usuário disponível para exportar.</string>
+    <string name="eval_out_of_plausible_range_percent">Valor atípico: fora do intervalo plausível (%1$.0f–%2$.0f).</string>
+    <string name="bluetooth_scale_trisa_message_not_paired_instruction">Esta balança não foi pareada!\n\nMantenha pressionado o botão na parte inferior da balança para entrar no modo de pareamento e, em seguida, reconecte para recuperar a senha do dispositivo.</string>
+    <string name="bluetooth_scale_trisa_success_pairing">Pareamento bem-sucedido!\n\nReconecte para recuperar os dados de medição.</string>
+    <string name="bluetooth_scale_info_create_user_instruction">Criar novo usuário na balança.</string>
+    <string name="bluetooth_scale_warning_low_battery">Nível de bateria baixo (%d%%), recarregue ou substitua as baterias da balança.</string>
+    <string name="bluetooth_scale_info_step_on_for_reference">Suba descalço na balança para medições de referência</string>
+    <string name="bluetooth_scale_info_measuring_weight">Medindo peso: %.2f</string>
+    <string name="dialog_bt_error_loading_user_list_format">Erro: Não foi possível carregar os dados do usuário corretamente.</string>
+    <string name="clear_button">Limpar</string>
+    <string name="import_successful_records">%1$d registros de medição importados com sucesso.</string>
+    <string name="import_successful_records_with_details">%1$d registros importados com sucesso%2$s.</string>
+    <string name="import_summary_details_base">%1$d registros de medição importados com sucesso.</string>
+    <string name="import_summary_ignored_duplicated_timestamp">%1$d linhas ignoradas (data/hora duplicada).</string>
+    <string name="import_summary_skipped_missing_dates">%1$d linhas ignoradas devido a datas ausentes.</string>
+    <string name="import_summary_skipped_date_parse_errors">%1$d registros ignorados devido a erros de interpretação da data.</string>
+    <string name="import_summary_values_skipped_parse_errors">%1$d valores individuais não puderam ser interpretados.</string>
+    <string name="import_error_no_valid_data">Nenhum dado válido encontrado no arquivo CSV ou todas as linhas continham erros.</string>
+    <string name="import_error_missing_date_column">Falha na importação: A coluna obrigatória de data está ausente no cabeçalho do CSV.</string>
+    <string name="import_error_cannot_read_file">Falha na importação: Não foi possível ler o arquivo.</string>
+    <string name="import_error_generic">Erro durante a importação: %1$s</string>
+    <string name="import_no_users_available">Nenhum usuário disponível para importação.</string>
+    <string name="backup_error_main_db_not_found">Erro: Arquivo do banco de dados principal \'%1$s\' não encontrado.</string>
 </resources>
