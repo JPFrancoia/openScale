@@ -26,6 +26,7 @@ import com.health.openscale.core.bluetooth.BluetoothEvent
 import com.health.openscale.core.bluetooth.ScaleFactory
 import com.health.openscale.core.bluetooth.data.ScaleUser
 import com.health.openscale.core.bluetooth.scales.DeviceSupport
+import com.health.openscale.core.bluetooth.scales.ScaleConfigField
 import com.health.openscale.core.bluetooth.scales.TuningProfile
 import com.health.openscale.core.data.ConnectionStatus
 import com.health.openscale.core.data.User
@@ -118,20 +119,33 @@ class BluetoothFacade @Inject constructor(
         }
     }
 
-    // --- S400 Configuration ---
-    // S400 bind key is stored per-device, so we need to observe the saved device address
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val s400BindKey: StateFlow<String> = savedDevice
-        .flatMapLatest { device ->
-            device?.address?.let { addr ->
-                settingsFacade.observeS400BindKey(addr)
-            } ?: flowOf("")
-        }
-        .stateIn(scope, SharingStarted.WhileSubscribed(5000), "")
+    // --- Handler configuration ---
+    // Exposes the saved device's handler config fields and provides generic read/write
+    // using the same key format as FacadeDriverSettings: "ble/{handlerNamespace}/{address}/{key}"
 
-    suspend fun setS400BindKey(bindKey: String) {
-        val address = savedDevice.value?.address ?: return
-        settingsFacade.saveS400BindKey(address, bindKey)
+    /** Config fields declared by the handler for the currently saved device. */
+    val savedDeviceConfigFields: StateFlow<List<ScaleConfigField>> =
+        savedDevice.map { device ->
+            if (device == null) return@map emptyList()
+            scaleFactory.getHandlerFor(device)?.configFields() ?: emptyList()
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Observe a single driver setting value for the currently saved device. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeDriverSetting(key: String): Flow<String> {
+        return savedDevice.flatMapLatest { device ->
+            if (device == null) return@flatMapLatest flowOf("")
+            val ns = scaleFactory.getHandlerFor(device)?.handlerNamespace
+                ?: return@flatMapLatest flowOf("")
+            settingsFacade.observeSetting("ble/$ns/${device.address}/$key", "")
+        }
+    }
+
+    /** Save a driver setting value for the currently saved device. */
+    suspend fun saveDriverSetting(key: String, value: String) {
+        val device = savedDevice.value ?: return
+        val ns = scaleFactory.getHandlerFor(device)?.handlerNamespace ?: return
+        settingsFacade.saveSetting("ble/$ns/${device.address}/$key", value)
     }
 
     // --- Current user context ---

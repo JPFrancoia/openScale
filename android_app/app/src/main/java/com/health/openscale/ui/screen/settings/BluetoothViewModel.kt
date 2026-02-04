@@ -42,15 +42,23 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.health.openscale.R
 import com.health.openscale.core.bluetooth.BluetoothEvent
+import com.health.openscale.core.bluetooth.scales.ScaleConfigField
 import com.health.openscale.core.bluetooth.scales.TuningProfile
 import com.health.openscale.core.facade.BluetoothFacade
 import com.health.openscale.core.facade.SettingsFacade
 import com.health.openscale.core.service.ScannedDeviceInfo
 import com.health.openscale.ui.shared.SnackbarEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -89,8 +97,29 @@ class BluetoothViewModel @Inject constructor(
     val smartAssignmentTolerancePercent = settingsFacade.smartAssignmentTolerancePercent
     val smartAssignmentIgnoreOutsideTolerance = settingsFacade.smartAssignmentIgnoreOutsideTolerance
 
-    // S400 configuration
-    val s400BindKey = bt.s400BindKey
+    // --- Handler-declared configuration fields ---
+    val configFields: StateFlow<List<ScaleConfigField>> = bt.savedDeviceConfigFields
+
+    /** Current values for each handler config field, keyed by [ScaleConfigField.key]. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val configValues: StateFlow<Map<String, String>> = configFields
+        .flatMapLatest { fields ->
+            if (fields.isEmpty()) return@flatMapLatest flowOf(emptyMap<String, String>())
+            val flows = fields.map { field ->
+                bt.observeDriverSetting(field.key).stateIn(
+                    viewModelScope, SharingStarted.WhileSubscribed(5000), ""
+                )
+            }
+            combine(flows) { values ->
+                fields.mapIndexed { i, field -> field.key to values[i] }.toMap()
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Save a handler config field value. */
+    fun setConfigValue(key: String, value: String) = viewModelScope.launch {
+        bt.saveDriverSetting(key, value)
+    }
 
     fun setSmartAssignmentEnabled(enabled: Boolean) = viewModelScope.launch {
         settingsFacade.setSmartAssignmentEnabled(enabled)
@@ -102,10 +131,6 @@ class BluetoothViewModel @Inject constructor(
 
     fun setSmartAssignmentIgnoreOutsideTolerance(ignore: Boolean) = viewModelScope.launch {
         settingsFacade.setSmartAssignmentIgnoreOutsideTolerance(ignore)
-    }
-
-    fun setS400BindKey(bindKey: String) = viewModelScope.launch {
-        bt.setS400BindKey(bindKey)
     }
 
     // --- Snackbar events for UI ---
