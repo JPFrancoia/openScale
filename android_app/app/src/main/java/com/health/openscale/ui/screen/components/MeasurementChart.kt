@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
@@ -69,6 +70,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.room.util.copy
 import com.health.openscale.R
 import com.health.openscale.core.data.InputFieldType
 import com.health.openscale.core.data.MeasurementType
@@ -89,8 +91,10 @@ import com.patrykandpatrick.vico.compose.cartesian.axis.rememberAxisGuidelineCom
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottom
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberEnd
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStart
+import com.patrykandpatrick.vico.compose.cartesian.layer.continuous
 import com.patrykandpatrick.vico.compose.cartesian.layer.dashed
 import com.patrykandpatrick.vico.compose.cartesian.layer.point
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.marker.rememberDefaultCartesianMarker
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
@@ -283,6 +287,10 @@ fun MeasurementChart(
         )
     }.collectAsStateWithLifecycle(initialValue = null)
 
+    val rawData by remember(startTimeMillis, endTimeMillis) {
+        sharedViewModel.getRawEnrichedMeasurements(startTimeMillisFlow, endTimeMillisFlow)
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
+
     // Update loading state once data (or an empty list after loading) is received
     LaunchedEffect(smoothedData) {
         if (smoothedData != null) {
@@ -295,6 +303,14 @@ fun MeasurementChart(
     val lineChartMeasurements = remember(smoothedData, selectedPeriod) {
         if (selectedPeriod == null) smoothedData
         else (smoothedData ?: emptyList()).filter { measurement ->
+            val ts = measurement.measurementWithValues.measurement.timestamp
+            ts >= selectedPeriod!!.startTimestamp && ts < selectedPeriod!!.endTimestamp
+        }
+    }
+
+    val rawChartMeasurements = remember(rawData, selectedPeriod) {
+        if (selectedPeriod == null) rawData
+        else rawData.filter { measurement ->
             val ts = measurement.measurementWithValues.measurement.timestamp
             ts >= selectedPeriod!!.startTimestamp && ts < selectedPeriod!!.endTimestamp
         }
@@ -471,6 +487,11 @@ fun MeasurementChart(
             lineTypesToActuallyPlot = lineTypesToActuallyPlot
         )
 
+        val rawChartSeries = rememberChartSeries(
+            enrichedMeasurements = rawChartMeasurements,
+            lineTypesToActuallyPlot = lineTypesToActuallyPlot
+        )
+
         when {
             isChartDataLoading -> {
                 Box(
@@ -543,10 +564,11 @@ fun MeasurementChart(
                 val startYAxis = if (showYAxis) VerticalAxis.rememberStart(valueFormatter = yAxisValueFormatter) else null
                 val endYAxis = if (showYAxis) VerticalAxis.rememberEnd(valueFormatter = yAxisValueFormatter) else null
 
-                val modelProducer = rememberChartModelProducer(chartSeries = chartSeries)
+                val modelProducer = rememberChartModelProducer(chartSeries = chartSeries, rawChartSeries = rawChartSeries)
 
                 val layers = rememberChartLayers(
                     chartSeries = chartSeries,
+                    rawChartSeries = rawChartSeries,
                     showDataPointsSetting = showDataPointsSetting,
                     targetMeasurementTypeId = targetMeasurementTypeId,
                     goalValuesForScaling = goalValuesForScaling
@@ -712,15 +734,18 @@ private fun rememberChartSeries(
  */
 @Composable
 private fun rememberChartModelProducer(
-    chartSeries: List<ChartSeries>
+    chartSeries: List<ChartSeries>,
+    rawChartSeries : List<ChartSeries>
 ): CartesianChartModelProducer {
     // 1. Create and remember the model producer instance.
     val modelProducer = remember { CartesianChartModelProducer() }
 
     // 2. This LaunchedEffect observes the data and updates the producer.
     //    It runs whenever the chartSeries data changes.
-    LaunchedEffect(chartSeries) {
+    LaunchedEffect(chartSeries, rawChartSeries) {
         // --- Separate the series into four distinct groups ---
+        val mainRawSeriesStart = rawChartSeries.filter { !it.isProjected && !it.type.isOnRightYAxis }
+        val mainRawSeriesEnd = rawChartSeries.filter { !it.isProjected && it.type.isOnRightYAxis }
         val mainSeriesStart = chartSeries.filter { !it.isProjected && !it.type.isOnRightYAxis }
         val mainSeriesEnd = chartSeries.filter { !it.isProjected && it.type.isOnRightYAxis }
         val projectedSeriesStart = chartSeries.filter { it.isProjected && !it.type.isOnRightYAxis }
@@ -729,6 +754,22 @@ private fun rememberChartModelProducer(
         // 3. Update the Vico model producer in a transaction.
         modelProducer.runTransaction {
             if (chartSeries.isNotEmpty()) {
+                if (mainRawSeriesStart.isNotEmpty()) {
+                    lineSeries {
+                        mainRawSeriesStart.forEach { series ->
+                            series(x = series.points.map { it.x }, y = series.points.map { it.y })
+                        }
+                    }
+                }
+
+                if (mainRawSeriesEnd.isNotEmpty()) {
+                    lineSeries {
+                        mainRawSeriesEnd.forEach { series ->
+                            series(x = series.points.map { it.x }, y = series.points.map { it.y })
+                        }
+                    }
+                }
+
                 // Layer 0: Main (solid) lines on the START axis
                 if (mainSeriesStart.isNotEmpty()) {
                     lineSeries {
@@ -783,6 +824,8 @@ private fun rememberChartModelProducer(
                 lineSeries { }
                 lineSeries { }
                 lineSeries { }
+                lineSeries { }
+                lineSeries { }
             }
         }
     }
@@ -804,16 +847,21 @@ private fun rememberChartModelProducer(
 @Composable
 private fun rememberChartLayers(
     chartSeries: List<ChartSeries>,
+    rawChartSeries: List<ChartSeries>,
     showDataPointsSetting: Boolean,
     targetMeasurementTypeId: Int?,
     goalValuesForScaling: List<Float> = emptyList()
 ): List<LineCartesianLayer> {
     // 1. Separate series and their colors into four distinct groups.
+    val mainRawSeriesStart = remember(rawChartSeries) { chartSeries.filter { !it.isProjected && !it.type.isOnRightYAxis } }
+    val mainRawSeriesEnd = remember(rawChartSeries) { chartSeries.filter { !it.isProjected && it.type.isOnRightYAxis } }
     val mainSeriesStart = remember(chartSeries) { chartSeries.filter { !it.isProjected && !it.type.isOnRightYAxis } }
     val mainSeriesEnd = remember(chartSeries) { chartSeries.filter { !it.isProjected && it.type.isOnRightYAxis } }
     val projectedSeriesStart = remember(chartSeries) { chartSeries.filter { it.isProjected && !it.type.isOnRightYAxis } }
     val projectedSeriesEnd = remember(chartSeries) { chartSeries.filter { it.isProjected && it.type.isOnRightYAxis } }
 
+    val mainRawColorsStart = remember(mainRawSeriesStart) { mainRawSeriesStart.map { Color(it.type.color) } }
+    val mainRawColorsEnd = remember(mainRawSeriesEnd) { mainRawSeriesEnd.map { Color(it.type.color) } }
     val mainColorsStart = remember(mainSeriesStart) { mainSeriesStart.map { Color(it.type.color) } }
     val mainColorsEnd = remember(mainSeriesEnd) { mainSeriesEnd.map { Color(it.type.color) } }
     val projectedColorsStart = remember(projectedSeriesStart) { projectedSeriesStart.map { Color(it.type.color) } }
@@ -841,6 +889,29 @@ private fun rememberChartLayers(
     }
 
     // 3. Create the four layers, one for each group.
+    val rawPointsLayerStart = if (mainRawSeriesStart.isNotEmpty()) {
+        rememberLineCartesianLayer(
+            lineProvider = LineCartesianLayer.LineProvider.series(
+                mainRawColorsStart.map { color ->
+                    createLineSpec(color, targetMeasurementTypeId != null, true, isProjection = false, isPointConnected = false)
+                }
+            ),
+            verticalAxisPosition = Axis.Position.Vertical.Start,
+            rangeProvider = rangeProvider
+        )
+    } else null
+
+    val rawPointsLayerEnd = if (mainRawSeriesEnd.isNotEmpty()) {
+        rememberLineCartesianLayer(
+            lineProvider = LineCartesianLayer.LineProvider.series(
+                mainRawColorsEnd.map { color ->
+                    createLineSpec(color, targetMeasurementTypeId != null, true, isProjection = false, isPointConnected = false)
+                }
+            ),
+            verticalAxisPosition = Axis.Position.Vertical.End,
+            rangeProvider = rangeProvider
+        )
+    } else null
 
     // Layer 0: Main (solid) lines on START axis
     val mainLayerStart = if (mainSeriesStart.isNotEmpty()) {
@@ -897,6 +968,8 @@ private fun rememberChartLayers(
     // 4. Return all non-null layers in the correct order for Vico.
     return remember(mainLayerStart, mainLayerEnd, projectionLayerStart, projectionLayerEnd) {
         listOfNotNull(
+            rawPointsLayerStart,
+            rawPointsLayerEnd,
             mainLayerStart,
             mainLayerEnd,
             projectionLayerStart,
@@ -1221,30 +1294,35 @@ private fun rememberXAxisValueFormatter(
  *                       This is typically used when `targetMeasurementTypeId` is set.
  * @param showPoints If true, points are displayed on the line (unless in statisticsMode or for projections).
  * @param isProjection If true, creates a dashed line specification for projection data.
+ * @param isPointConnected If true, connects the points of the line with a cubic bezier curve.
  * @return A configured [LineCartesianLayer.Line].
  */
 private fun createLineSpec(
     color: Color,
     statisticsMode: Boolean,
     showPoints: Boolean,
-    isProjection: Boolean = false
+    isProjection: Boolean = false,
+    isPointConnected : Boolean = true,
 ): LineCartesianLayer.Line {
-    val lineStroke = if (isProjection) {
-        // Create a dashed line for projections
-        LineCartesianLayer.LineStroke.dashed(
-            thickness = 2.dp,
-            dashLength = 4.dp,
-            gapLength = 4.dp
-        )
-    } else {
-        // Create a solid line for actual measurements
-        LineCartesianLayer.LineStroke.Continuous(
-            thicknessDp = 2f,
-        )
-    }
+    val lineStroke =
+        if (!isPointConnected) {
+            LineCartesianLayer.LineStroke.dashed(
+                dashLength = 0.dp, // to show only points fake a no visible dashed line
+            )
+        } else if (isProjection) {
+            LineCartesianLayer.LineStroke.dashed(
+                thickness = 2.dp,
+                dashLength = 4.dp,
+                gapLength = 4.dp
+            )
+        } else {
+            LineCartesianLayer.LineStroke.Continuous(
+                thicknessDp = 2f
+            )
+        }
 
     val lineFill = LineCartesianLayer.LineFill.single( // Defines the color of the line itself
-        fill = Fill(color.toArgb())
+        fill = if (isPointConnected) Fill(color.toArgb()) else Fill(color.copy(alpha = 0.5f).toArgb())
     )
 
     return LineCartesianLayer.Line(

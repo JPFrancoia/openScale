@@ -29,7 +29,6 @@ import com.health.openscale.core.data.MeasurementType
 import com.health.openscale.core.data.MeasurementTypeKey
 import com.health.openscale.core.data.MeasurementValue
 import com.health.openscale.core.data.SmoothingAlgorithm
-import com.health.openscale.core.data.TimeRangeFilter
 import com.health.openscale.core.data.User
 import com.health.openscale.core.data.UserGoals
 import com.health.openscale.core.facade.DataManagementFacade
@@ -53,6 +52,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -447,6 +447,25 @@ class SharedViewModel @Inject constructor(
                     windowFlow = smoothingWindowSize,
                     maxGapDaysFlow = chartSmoothingMaxGapDays
                 )
+            }
+        }
+    }
+
+    fun getRawEnrichedMeasurements(
+        startTimeMillisFlow: Flow<Long?>,
+        endTimeMillisFlow: Flow<Long?>
+    ): Flow<List<EnrichedMeasurement>> {
+        return selectedUserId.flatMapLatest { uid ->
+            if (uid == null) flowOf(emptyList())
+            else measurementFacade.timeFilteredEnrichedFlow(
+                userId = uid,
+                measurementTypesFlow = measurementTypes,
+                startTimeMillis = null,
+                endTimeMillis = null
+            ).combine(startTimeMillisFlow) { list, start ->
+                list.filter { it.measurementWithValues.measurement.timestamp >= (start ?: 0L) }
+            }.combine(endTimeMillisFlow) { list, end ->
+                list.filter { it.measurementWithValues.measurement.timestamp <= (end ?: Long.MAX_VALUE) }
             }
         }
     }
