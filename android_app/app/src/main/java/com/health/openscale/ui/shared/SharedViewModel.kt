@@ -451,25 +451,6 @@ class SharedViewModel @Inject constructor(
         }
     }
 
-    fun getRawEnrichedMeasurements(
-        startTimeMillisFlow: Flow<Long?>,
-        endTimeMillisFlow: Flow<Long?>
-    ): Flow<List<EnrichedMeasurement>> {
-        return selectedUserId.flatMapLatest { uid ->
-            if (uid == null) flowOf(emptyList())
-            else measurementFacade.timeFilteredEnrichedFlow(
-                userId = uid,
-                measurementTypesFlow = measurementTypes,
-                startTimeMillis = null,
-                endTimeMillis = null
-            ).combine(startTimeMillisFlow) { list, start ->
-                list.filter { it.measurementWithValues.measurement.timestamp >= (start ?: 0L) }
-            }.combine(endTimeMillisFlow) { list, end ->
-                list.filter { it.measurementWithValues.measurement.timestamp <= (end ?: Long.MAX_VALUE) }
-            }
-        }
-    }
-
     fun evaluateMeasurement(
         type: MeasurementType,
         value: Float,

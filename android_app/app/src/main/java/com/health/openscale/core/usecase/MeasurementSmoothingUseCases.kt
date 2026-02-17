@@ -170,24 +170,23 @@ class MeasurementSmoothingUseCases @Inject constructor() {
 
             // --- Construct final list of EnrichedMeasurements ---
 
-            // Collect all timestamps for which we have at least one smoothed value.
-            val smoothedTimestamps = smoothedMapByType.values.flatMap { it.keys }.toSet()
+            measurements.map { em ->
+                val ts = em.measurementWithValues.measurement.timestamp
 
-            // 1. Filter the original list to keep only measurements that have a smoothed value.
-            //    This creates a new, shorter list, discarding initial data points for which
-            //    no smoothed value could be calculated (e.g., those inside the initial SMA window).
-            measurements.filter { em ->
-                em.measurementWithValues.measurement.timestamp in smoothedTimestamps
-            }
-                // 2. Map over the filtered list to replace the original values with the smoothed ones.
-                .map { em ->
-                    val ts = em.measurementWithValues.measurement.timestamp
+                // check for existing smoothed values
+                val hasSmoothedValues = smoothedMapByType.values.any { it.containsKey(ts) }
+
+                if (!hasSmoothedValues) {
+                    // no smoothing for this timestamp → keep original
+                    em
+                } else {
+                    // smoothing exits → replace value
                     val newValuesWithTrend = em.valuesWithTrend.map { v ->
                         val typeId = v.currentValue.type.id
                         val smoothedAtTs = smoothedMapByType[typeId]?.get(ts)
 
                         if (smoothedAtTs == null) {
-                            v // Keep original value if this type was not a candidate for smoothing
+                            v // no smoothing for this timestamp → keep original
                         } else {
                             val inputType = v.currentValue.type.inputType
                             val oldVal = v.currentValue.value
@@ -201,6 +200,7 @@ class MeasurementSmoothingUseCases @Inject constructor() {
                     }
                     em.copy(valuesWithTrend = newValuesWithTrend)
                 }
+            }
         }.flowOn(Dispatchers.Default)
     }
 

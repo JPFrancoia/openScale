@@ -93,15 +93,13 @@ class MeasurementFacade @Inject constructor(
             val projectedValues = enricher.enrichWithProjection(measurements, types)
 
             measurements.mapIndexed { index, currentMeasurement ->
-                // Find the specific trends/differences that belong to this measurement.
                 val trendsForCurrent = differenceValues.filter {
                     it.currentValue.value.measurementId == currentMeasurement.measurement.id
                 }
 
-                // Find the specific projected values that belong to this measurement.
-                val projectedForCurrent = projectedValues.filter {
-                    it.values.first().value.measurementId == currentMeasurement.measurement.id
-                }
+                // Projections belong to the newest measurement only (index == 0),
+                // as they are calculated from the last known real data point.
+                val projectedForCurrent = if (index == 0) projectedValues else emptyList()
 
                 EnrichedMeasurement(
                     measurementWithValues = currentMeasurement,
