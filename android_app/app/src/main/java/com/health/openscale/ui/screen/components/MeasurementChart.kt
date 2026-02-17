@@ -564,7 +564,8 @@ fun MeasurementChart(
                 val modelProducer = rememberChartModelProducer(
                     chartSeries = chartSeries,
                     rawChartSeries = rawChartSeries,
-                    isSmoothingActive = isSmoothingActive
+                    isSmoothingActive = isSmoothingActive,
+                    showDataPointsSetting = showDataPointsSetting
                 )
 
                 val layers = rememberChartLayers(
@@ -652,11 +653,12 @@ fun MeasurementChart(
 private fun rememberChartModelProducer(
     chartSeries: List<ChartSeries>,
     rawChartSeries: List<ChartSeries>,
-    isSmoothingActive: Boolean
+    isSmoothingActive: Boolean,
+    showDataPointsSetting: Boolean
 ): CartesianChartModelProducer {
     val modelProducer = remember { CartesianChartModelProducer() }
 
-    LaunchedEffect(chartSeries, rawChartSeries, isSmoothingActive) {
+    LaunchedEffect(chartSeries, rawChartSeries, isSmoothingActive, showDataPointsSetting) {
         val smoothedSeriesStart = chartSeries.filter { !it.isProjected && !it.type.isOnRightYAxis }
         val smoothedSeriesEnd = chartSeries.filter { !it.isProjected && it.type.isOnRightYAxis }
         val projectedSeriesStart = chartSeries.filter { it.isProjected && !it.type.isOnRightYAxis }
@@ -667,8 +669,8 @@ private fun rememberChartModelProducer(
         val rawSeriesEnd = if (isSmoothingActive) rawChartSeries.filter { !it.isProjected && it.type.isOnRightYAxis } else emptyList()
 
         modelProducer.runTransaction {
-            // Layer 0: Raw points START (only when smoothing active)
-            if (rawSeriesStart.isNotEmpty()) {
+            // Layer 0: Raw points START (only when smoothing active and show data points active)
+            if (rawSeriesStart.isNotEmpty() && showDataPointsSetting) {
                 lineSeries {
                     rawSeriesStart.forEach { series ->
                         series(x = series.points.map { it.x }, y = series.points.map { it.y })
@@ -676,8 +678,8 @@ private fun rememberChartModelProducer(
                 }
             }
 
-            // Layer 1: Raw points END (only when smoothing active)
-            if (rawSeriesEnd.isNotEmpty()) {
+            // Layer 1: Raw points END (only when smoothing active and show data points active)
+            if (rawSeriesEnd.isNotEmpty() && showDataPointsSetting) {
                 lineSeries {
                     rawSeriesEnd.forEach { series ->
                         series(x = series.points.map { it.x }, y = series.points.map { it.y })
@@ -793,8 +795,8 @@ private fun rememberChartLayers(
 
     val layers = mutableListOf<LineCartesianLayer>()
 
-    // Layer 0: RAW points START (only when smoothing active)
-    if (rawSeriesStart.isNotEmpty()) {
+    // Layer 0: RAW points START (only when smoothing active and show data points active)
+    if (rawSeriesStart.isNotEmpty() && showDataPointsSetting) {
         layers.add(
             rememberLineCartesianLayer(
                 lineProvider = LineCartesianLayer.LineProvider.series(
@@ -814,8 +816,8 @@ private fun rememberChartLayers(
         )
     }
 
-    // Layer 1: RAW points END (only when smoothing active)
-    if (rawSeriesEnd.isNotEmpty()) {
+    // Layer 1: RAW points END (only when smoothing active and show data points active)
+    if (rawSeriesEnd.isNotEmpty() && showDataPointsSetting) {
         layers.add(
             rememberLineCartesianLayer(
                 lineProvider = LineCartesianLayer.LineProvider.series(
