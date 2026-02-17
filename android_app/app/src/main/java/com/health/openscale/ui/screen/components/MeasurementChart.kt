@@ -73,6 +73,7 @@ import com.health.openscale.R
 import com.health.openscale.core.data.InputFieldType
 import com.health.openscale.core.data.MeasurementType
 import com.health.openscale.core.data.MeasurementTypeKey
+import com.health.openscale.core.data.SmoothingAlgorithm
 import com.health.openscale.core.data.TimeRangeFilter
 import com.health.openscale.core.data.UnitType
 import com.health.openscale.core.data.UserGoals
@@ -241,6 +242,11 @@ fun MeasurementChart(
         .showChartGoalLines
         .collectAsStateWithLifecycle(initialValue = false)
 
+    val isSmoothingActive by sharedViewModel
+        .selectedSmoothingAlgorithm
+        .map { it != SmoothingAlgorithm.NONE }
+        .collectAsStateWithLifecycle(initialValue = false)
+
     val timeRangeState by rememberResolvedTimeRangeState(
         screenContextName = screenContextName,
         sharedViewModel = sharedViewModel
@@ -295,6 +301,15 @@ fun MeasurementChart(
     val lineChartMeasurements = remember(smoothedData, selectedPeriod) {
         if (selectedPeriod == null) smoothedData
         else (smoothedData ?: emptyList()).filter { measurement ->
+            val ts = measurement.measurementWithValues.measurement.timestamp
+            ts >= selectedPeriod!!.startTimestamp && ts < selectedPeriod!!.endTimestamp
+        }
+    }
+
+    val rawChartMeasurements = remember(smoothedData, selectedPeriod) {
+        val data = smoothedData ?: emptyList()
+        if (selectedPeriod == null) data
+        else data.filter { measurement ->
             val ts = measurement.measurementWithValues.measurement.timestamp
             ts >= selectedPeriod!!.startTimestamp && ts < selectedPeriod!!.endTimestamp
         }
@@ -466,10 +481,13 @@ fun MeasurementChart(
             }
         }
 
-        val chartSeries = rememberChartSeries(
-            enrichedMeasurements = lineChartMeasurements ?: emptyList(),
-            lineTypesToActuallyPlot = lineTypesToActuallyPlot
-        )
+        val chartSeries = remember(lineChartMeasurements, lineTypesToActuallyPlot) {
+            (lineChartMeasurements ?: emptyList()).toSmoothedChartSeries(lineTypesToActuallyPlot)
+        }
+
+        val rawChartSeries = remember(rawChartMeasurements, lineTypesToActuallyPlot) {
+            rawChartMeasurements.toRawChartSeries(lineTypesToActuallyPlot)
+        }
 
         when {
             isChartDataLoading -> {
@@ -543,10 +561,16 @@ fun MeasurementChart(
                 val startYAxis = if (showYAxis) VerticalAxis.rememberStart(valueFormatter = yAxisValueFormatter) else null
                 val endYAxis = if (showYAxis) VerticalAxis.rememberEnd(valueFormatter = yAxisValueFormatter) else null
 
-                val modelProducer = rememberChartModelProducer(chartSeries = chartSeries)
+                val modelProducer = rememberChartModelProducer(
+                    chartSeries = chartSeries,
+                    rawChartSeries = rawChartSeries,
+                    isSmoothingActive = isSmoothingActive
+                )
 
                 val layers = rememberChartLayers(
                     chartSeries = chartSeries,
+                    rawChartSeries = rawChartSeries,
+                    isSmoothingActive = isSmoothingActive,
                     showDataPointsSetting = showDataPointsSetting,
                     targetMeasurementTypeId = targetMeasurementTypeId,
                     goalValuesForScaling = goalValuesForScaling
@@ -616,92 +640,6 @@ fun MeasurementChart(
     }
 }
 
-
-/**
- * A private helper that remembers and processes a list of [EnrichedMeasurement] into a list of [ChartSeries].
- * It creates separate [ChartSeries] for both the actual measurements and any available
- * future projections, marking them with the `isProjected` flag.
- *
- * @param enrichedMeasurements The complete list of enriched measurement data, including potential projections.
- * @param lineTypesToActuallyPlot The specific measurement types to include in the series.
- * @return A memoized list of [ChartSeries] for both real and projected data, or an emptyList.
- */
-@Composable
-private fun rememberChartSeries(
-    enrichedMeasurements: List<EnrichedMeasurement>,
-    lineTypesToActuallyPlot: List<MeasurementType>
-): List<ChartSeries> {
-    return remember(enrichedMeasurements, lineTypesToActuallyPlot) {
-        if (enrichedMeasurements.isEmpty() || lineTypesToActuallyPlot.isEmpty()) {
-            return@remember emptyList()
-        }
-
-        // --- Step 1: Create series for the REAL measurements ---
-        val realSeries = lineTypesToActuallyPlot.mapNotNull { type ->
-            val dateValuePairs = mutableMapOf<LocalDate, Float>()
-            enrichedMeasurements.forEach { em ->
-                val mwv = em.measurementWithValues
-                mwv.values.find { it.type.id == type.id }?.let { valueWithType ->
-                    val yValue = when (type.inputType) {
-                        InputFieldType.FLOAT -> valueWithType.value.floatValue
-                        InputFieldType.INT -> valueWithType.value.intValue?.toFloat()
-                        else -> null
-                    }
-                    yValue?.let {
-                        val date = Instant.ofEpochMilli(mwv.measurement.timestamp)
-                            .atZone(ZoneId.systemDefault())
-                            .toLocalDate()
-                        dateValuePairs[date] = it
-                    }
-                }
-            }
-
-            if (dateValuePairs.isNotEmpty()) {
-                val chartPoints = dateValuePairs.toList()
-                    .sortedBy { it.first }
-                    .map { (date, value) ->
-                        ChartPoint(date = date, x = date.toEpochDay().toFloat(), y = value)
-                    }
-                ChartSeries(isProjected = false, type = type, points = chartPoints) // isProjected = false
-            } else {
-                null
-            }
-        }
-
-        // --- Step 2: Create series for the PROJECTED measurements ---
-        val projectionData = enrichedMeasurements.firstOrNull()?.measurementWithValuesProjected ?: emptyList()
-
-        val projectedSeries = if (projectionData.isNotEmpty()) {
-            // Group the flat projection list by type
-            val groupedProjections = projectionData.groupBy { it.values.first().type.id }
-
-            lineTypesToActuallyPlot.mapNotNull { type ->
-                val projectedValuesForType = groupedProjections[type.id]
-                if (projectedValuesForType != null && projectedValuesForType.isNotEmpty()) {
-                    val chartPoints = projectedValuesForType.map { mwv ->
-                        val date = Instant.ofEpochMilli(mwv.measurement.timestamp)
-                            .atZone(ZoneId.systemDefault())
-                            .toLocalDate()
-                        ChartPoint(
-                            date = date,
-                            x = date.toEpochDay().toFloat(),
-                            y = mwv.values.first().value.floatValue!!
-                        )
-                    }.sortedBy { it.x }
-                    ChartSeries(isProjected = true, type = type, points = chartPoints) // isProjected = true
-                } else {
-                    null
-                }
-            }
-        } else {
-            emptyList()
-        }
-
-        // --- Step 3: Combine both lists ---
-        realSeries + projectedSeries
-    }
-}
-
 /**
  * A private helper that creates, remembers, and updates a [CartesianChartModelProducer].
  * It encapsulates the entire logic of transforming the prepared [ChartSeries] data
@@ -712,84 +650,80 @@ private fun rememberChartSeries(
  */
 @Composable
 private fun rememberChartModelProducer(
-    chartSeries: List<ChartSeries>
+    chartSeries: List<ChartSeries>,
+    rawChartSeries: List<ChartSeries>,
+    isSmoothingActive: Boolean
 ): CartesianChartModelProducer {
-    // 1. Create and remember the model producer instance.
     val modelProducer = remember { CartesianChartModelProducer() }
 
-    // 2. This LaunchedEffect observes the data and updates the producer.
-    //    It runs whenever the chartSeries data changes.
-    LaunchedEffect(chartSeries) {
-        // --- Separate the series into four distinct groups ---
-        val mainSeriesStart = chartSeries.filter { !it.isProjected && !it.type.isOnRightYAxis }
-        val mainSeriesEnd = chartSeries.filter { !it.isProjected && it.type.isOnRightYAxis }
+    LaunchedEffect(chartSeries, rawChartSeries, isSmoothingActive) {
+        val smoothedSeriesStart = chartSeries.filter { !it.isProjected && !it.type.isOnRightYAxis }
+        val smoothedSeriesEnd = chartSeries.filter { !it.isProjected && it.type.isOnRightYAxis }
         val projectedSeriesStart = chartSeries.filter { it.isProjected && !it.type.isOnRightYAxis }
         val projectedSeriesEnd = chartSeries.filter { it.isProjected && it.type.isOnRightYAxis }
 
-        // 3. Update the Vico model producer in a transaction.
+        // Raw points only shown when smoothing is active
+        val rawSeriesStart = if (isSmoothingActive) rawChartSeries.filter { !it.isProjected && !it.type.isOnRightYAxis } else emptyList()
+        val rawSeriesEnd = if (isSmoothingActive) rawChartSeries.filter { !it.isProjected && it.type.isOnRightYAxis } else emptyList()
+
         modelProducer.runTransaction {
-            if (chartSeries.isNotEmpty()) {
-                // Layer 0: Main (solid) lines on the START axis
-                if (mainSeriesStart.isNotEmpty()) {
-                    lineSeries {
-                        mainSeriesStart.forEach { series ->
-                            series(
-                                x = series.points.map { it.x },
-                                y = series.points.map { it.y },
-                            )
-                        }
+            // Layer 0: Raw points START (only when smoothing active)
+            if (rawSeriesStart.isNotEmpty()) {
+                lineSeries {
+                    rawSeriesStart.forEach { series ->
+                        series(x = series.points.map { it.x }, y = series.points.map { it.y })
                     }
                 }
+            }
 
-                // Layer 1: Main (solid) lines on the END axis
-                if (mainSeriesEnd.isNotEmpty()) {
-                    lineSeries {
-                        mainSeriesEnd.forEach { series ->
-                            series(
-                                x = series.points.map { it.x },
-                                y = series.points.map { it.y },
-                            )
-                        }
+            // Layer 1: Raw points END (only when smoothing active)
+            if (rawSeriesEnd.isNotEmpty()) {
+                lineSeries {
+                    rawSeriesEnd.forEach { series ->
+                        series(x = series.points.map { it.x }, y = series.points.map { it.y })
                     }
                 }
+            }
 
-                // Layer 2: Projected (dashed) lines on the START axis
-                if (projectedSeriesStart.isNotEmpty()) {
-                    lineSeries {
-                        projectedSeriesStart.forEach { series ->
-                            series(
-                                x = series.points.map { it.x },
-                                y = series.points.map { it.y },
-                            )
-                        }
+            // Layer 2: Smoothed/plain line START
+            if (smoothedSeriesStart.isNotEmpty()) {
+                lineSeries {
+                    smoothedSeriesStart.forEach { series ->
+                        series(x = series.points.map { it.x }, y = series.points.map { it.y })
                     }
                 }
+            }
 
-                // Layer 3: Projected (dashed) lines on the END axis
-                if (projectedSeriesEnd.isNotEmpty()) {
-                    lineSeries {
-                        projectedSeriesEnd.forEach { series ->
-                            series(
-                                x = series.points.map { it.x },
-                                y = series.points.map { it.y },
-                            )
-                        }
+            // Layer 3: Smoothed/plain line END
+            if (smoothedSeriesEnd.isNotEmpty()) {
+                lineSeries {
+                    smoothedSeriesEnd.forEach { series ->
+                        series(x = series.points.map { it.x }, y = series.points.map { it.y })
                     }
                 }
+            }
 
-            } else {
-                // Clear all layers if there is no data.
-                lineSeries { }
-                lineSeries { }
-                lineSeries { }
-                lineSeries { }
+            // Layer 4: Projected START
+            if (projectedSeriesStart.isNotEmpty()) {
+                lineSeries {
+                    projectedSeriesStart.forEach { series ->
+                        series(x = series.points.map { it.x }, y = series.points.map { it.y })
+                    }
+                }
+            }
+
+            // Layer 5: Projected END
+            if (projectedSeriesEnd.isNotEmpty()) {
+                lineSeries {
+                    projectedSeriesEnd.forEach { series ->
+                        series(x = series.points.map { it.x }, y = series.points.map { it.y })
+                    }
+                }
             }
         }
     }
-    // 4. Return the producer instance for the ChartHost to use.
     return modelProducer
 }
-
 
 /**
  * A private helper that creates and remembers the layers for drawing the lines on the chart.
@@ -804,105 +738,176 @@ private fun rememberChartModelProducer(
 @Composable
 private fun rememberChartLayers(
     chartSeries: List<ChartSeries>,
+    rawChartSeries: List<ChartSeries>,
+    isSmoothingActive: Boolean,
     showDataPointsSetting: Boolean,
     targetMeasurementTypeId: Int?,
     goalValuesForScaling: List<Float> = emptyList()
 ): List<LineCartesianLayer> {
-    // 1. Separate series and their colors into four distinct groups.
-    val mainSeriesStart = remember(chartSeries) { chartSeries.filter { !it.isProjected && !it.type.isOnRightYAxis } }
-    val mainSeriesEnd = remember(chartSeries) { chartSeries.filter { !it.isProjected && it.type.isOnRightYAxis } }
-    val projectedSeriesStart = remember(chartSeries) { chartSeries.filter { it.isProjected && !it.type.isOnRightYAxis } }
-    val projectedSeriesEnd = remember(chartSeries) { chartSeries.filter { it.isProjected && it.type.isOnRightYAxis } }
 
-    val mainColorsStart = remember(mainSeriesStart) { mainSeriesStart.map { Color(it.type.color) } }
-    val mainColorsEnd = remember(mainSeriesEnd) { mainSeriesEnd.map { Color(it.type.color) } }
+    // Raw series only relevant when smoothing is active
+    val rawSeriesStart = remember(rawChartSeries, isSmoothingActive) {
+        if (isSmoothingActive) rawChartSeries.filter { !it.isProjected && !it.type.isOnRightYAxis }
+        else emptyList()
+    }
+    val rawSeriesEnd = remember(rawChartSeries, isSmoothingActive) {
+        if (isSmoothingActive) rawChartSeries.filter { !it.isProjected && it.type.isOnRightYAxis }
+        else emptyList()
+    }
+    val smoothedSeriesStart = remember(chartSeries) {
+        chartSeries.filter { !it.isProjected && !it.type.isOnRightYAxis }
+    }
+    val smoothedSeriesEnd = remember(chartSeries) {
+        chartSeries.filter { !it.isProjected && it.type.isOnRightYAxis }
+    }
+    val projectedSeriesStart = remember(chartSeries) {
+        chartSeries.filter { it.isProjected && !it.type.isOnRightYAxis }
+    }
+    val projectedSeriesEnd = remember(chartSeries) {
+        chartSeries.filter { it.isProjected && it.type.isOnRightYAxis }
+    }
+
+    val rawColorsStart = remember(rawSeriesStart) { rawSeriesStart.map { Color(it.type.color) } }
+    val rawColorsEnd = remember(rawSeriesEnd) { rawSeriesEnd.map { Color(it.type.color) } }
+    val smoothedColorsStart = remember(smoothedSeriesStart) { smoothedSeriesStart.map { Color(it.type.color) } }
+    val smoothedColorsEnd = remember(smoothedSeriesEnd) { smoothedSeriesEnd.map { Color(it.type.color) } }
     val projectedColorsStart = remember(projectedSeriesStart) { projectedSeriesStart.map { Color(it.type.color) } }
     val projectedColorsEnd = remember(projectedSeriesEnd) { projectedSeriesEnd.map { Color(it.type.color) } }
 
-    // 2. Create a shared range provider.
     val rangeProvider = remember(goalValuesForScaling) {
         object : CartesianLayerRangeProvider {
             override fun getMinY(minY: Double, maxY: Double, extraStore: ExtraStore): Double {
                 val allMinima = goalValuesForScaling.map { it.toDouble() } + minY
                 val effectiveMin = allMinima.minOrNull() ?: minY
-
                 val delta = maxY - minY
                 return if (delta == 0.0) effectiveMin - 1.0 else floor(effectiveMin - 0.1 * delta)
             }
-
             override fun getMaxY(minY: Double, maxY: Double, extraStore: ExtraStore): Double {
                 val allMaxima = goalValuesForScaling.map { it.toDouble() } + maxY
                 val effectiveMax = allMaxima.maxOrNull() ?: maxY
-
                 val delta = maxY - minY
                 return if (delta == 0.0) effectiveMax + 1.0 else ceil(effectiveMax + 0.1 * delta)
             }
         }
     }
 
-    // 3. Create the four layers, one for each group.
+    val layers = mutableListOf<LineCartesianLayer>()
 
-    // Layer 0: Main (solid) lines on START axis
-    val mainLayerStart = if (mainSeriesStart.isNotEmpty()) {
-        rememberLineCartesianLayer(
-            lineProvider = LineCartesianLayer.LineProvider.series(
-                mainColorsStart.map { color ->
-                    createLineSpec(color, targetMeasurementTypeId != null, showDataPointsSetting, isProjection = false)
-                }
-            ),
-            verticalAxisPosition = Axis.Position.Vertical.Start,
-            rangeProvider = rangeProvider
-        )
-    } else null
-
-    // Layer 1: Main (solid) lines on END axis
-    val mainLayerEnd = if (mainSeriesEnd.isNotEmpty()) {
-        rememberLineCartesianLayer(
-            lineProvider = LineCartesianLayer.LineProvider.series(
-                mainColorsEnd.map { color ->
-                    createLineSpec(color, targetMeasurementTypeId != null, showDataPointsSetting, isProjection = false)
-                }
-            ),
-            verticalAxisPosition = Axis.Position.Vertical.End,
-            rangeProvider = rangeProvider
-        )
-    } else null
-
-    // Layer 2: Projected (dashed) lines on START axis
-    val projectionLayerStart = if (projectedSeriesStart.isNotEmpty()) {
-        rememberLineCartesianLayer(
-            lineProvider = LineCartesianLayer.LineProvider.series(
-                projectedColorsStart.map { color ->
-                    createLineSpec(color, statisticsMode = false, showPoints = false, isProjection = true)
-                }
-            ),
-            verticalAxisPosition = Axis.Position.Vertical.Start,
-            rangeProvider = rangeProvider
-        )
-    } else null
-
-    // Layer 3: Projected (dashed) lines on END axis
-    val projectionLayerEnd = if (projectedSeriesEnd.isNotEmpty()) {
-        rememberLineCartesianLayer(
-            lineProvider = LineCartesianLayer.LineProvider.series(
-                projectedColorsEnd.map { color ->
-                    createLineSpec(color, statisticsMode = false, showPoints = false, isProjection = true)
-                }
-            ),
-            verticalAxisPosition = Axis.Position.Vertical.End,
-            rangeProvider = rangeProvider
-        )
-    } else null
-
-    // 4. Return all non-null layers in the correct order for Vico.
-    return remember(mainLayerStart, mainLayerEnd, projectionLayerStart, projectionLayerEnd) {
-        listOfNotNull(
-            mainLayerStart,
-            mainLayerEnd,
-            projectionLayerStart,
-            projectionLayerEnd
+    // Layer 0: RAW points START (only when smoothing active)
+    if (rawSeriesStart.isNotEmpty()) {
+        layers.add(
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(
+                    rawColorsStart.map { color ->
+                        createLineSpec(
+                            color = color,
+                            statisticsMode = false,
+                            showPoints = true,
+                            isProjection = false,
+                            isPointConnected = false
+                        )
+                    }
+                ),
+                verticalAxisPosition = Axis.Position.Vertical.Start,
+                rangeProvider = rangeProvider
+            )
         )
     }
+
+    // Layer 1: RAW points END (only when smoothing active)
+    if (rawSeriesEnd.isNotEmpty()) {
+        layers.add(
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(
+                    rawColorsEnd.map { color ->
+                        createLineSpec(
+                            color = color,
+                            statisticsMode = false,
+                            showPoints = true,
+                            isProjection = false,
+                            isPointConnected = false
+                        )
+                    }
+                ),
+                verticalAxisPosition = Axis.Position.Vertical.End,
+                rangeProvider = rangeProvider
+            )
+        )
+    }
+
+    // Layer 2: Line START
+    // When smoothing active → line only (no points)
+    // When smoothing inactive → line + optional points via showDataPointsSetting
+    if (smoothedSeriesStart.isNotEmpty()) {
+        layers.add(
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(
+                    smoothedColorsStart.map { color ->
+                        createLineSpec(
+                            color = color,
+                            statisticsMode = targetMeasurementTypeId != null,
+                            showPoints = !isSmoothingActive && showDataPointsSetting,
+                            isProjection = false
+                        )
+                    }
+                ),
+                verticalAxisPosition = Axis.Position.Vertical.Start,
+                rangeProvider = rangeProvider
+            )
+        )
+    }
+
+    // Layer 3: Line END
+    if (smoothedSeriesEnd.isNotEmpty()) {
+        layers.add(
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(
+                    smoothedColorsEnd.map { color ->
+                        createLineSpec(
+                            color = color,
+                            statisticsMode = targetMeasurementTypeId != null,
+                            showPoints = !isSmoothingActive && showDataPointsSetting,
+                            isProjection = false
+                        )
+                    }
+                ),
+                verticalAxisPosition = Axis.Position.Vertical.End,
+                rangeProvider = rangeProvider
+            )
+        )
+    }
+
+    // Layer 4: PROJECTED START
+    if (projectedSeriesStart.isNotEmpty()) {
+        layers.add(
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(
+                    projectedColorsStart.map { color ->
+                        createLineSpec(color = color, statisticsMode = false, showPoints = false, isProjection = true)
+                    }
+                ),
+                verticalAxisPosition = Axis.Position.Vertical.Start,
+                rangeProvider = rangeProvider
+            )
+        )
+    }
+
+    // Layer 5: PROJECTED END
+    if (projectedSeriesEnd.isNotEmpty()) {
+        layers.add(
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(
+                    projectedColorsEnd.map { color ->
+                        createLineSpec(color = color, statisticsMode = false, showPoints = false, isProjection = true)
+                    }
+                ),
+                verticalAxisPosition = Axis.Position.Vertical.End,
+                rangeProvider = rangeProvider
+            )
+        )
+    }
+
+    return layers
 }
 
 
@@ -1221,30 +1226,35 @@ private fun rememberXAxisValueFormatter(
  *                       This is typically used when `targetMeasurementTypeId` is set.
  * @param showPoints If true, points are displayed on the line (unless in statisticsMode or for projections).
  * @param isProjection If true, creates a dashed line specification for projection data.
+ * @param isPointConnected If true, connects the points of the line with a cubic bezier curve.
  * @return A configured [LineCartesianLayer.Line].
  */
 private fun createLineSpec(
     color: Color,
     statisticsMode: Boolean,
     showPoints: Boolean,
-    isProjection: Boolean = false
+    isProjection: Boolean = false,
+    isPointConnected : Boolean = true,
 ): LineCartesianLayer.Line {
-    val lineStroke = if (isProjection) {
-        // Create a dashed line for projections
-        LineCartesianLayer.LineStroke.dashed(
-            thickness = 2.dp,
-            dashLength = 4.dp,
-            gapLength = 4.dp
-        )
-    } else {
-        // Create a solid line for actual measurements
-        LineCartesianLayer.LineStroke.Continuous(
-            thicknessDp = 2f,
-        )
-    }
+    val lineStroke =
+        if (!isPointConnected) {
+            LineCartesianLayer.LineStroke.dashed(
+                dashLength = 0.dp, // to show only points fake a no visible dashed line
+            )
+        } else if (isProjection) {
+            LineCartesianLayer.LineStroke.dashed(
+                thickness = 2.dp,
+                dashLength = 4.dp,
+                gapLength = 4.dp
+            )
+        } else {
+            LineCartesianLayer.LineStroke.Continuous(
+                thicknessDp = 2f
+            )
+        }
 
     val lineFill = LineCartesianLayer.LineFill.single( // Defines the color of the line itself
-        fill = Fill(color.toArgb())
+        fill = if (isPointConnected) Fill(color.toArgb()) else Fill(color.copy(alpha = 0.5f).toArgb())
     )
 
     return LineCartesianLayer.Line(
@@ -1547,4 +1557,149 @@ fun rememberContextualBooleanSetting(
 ): State<Boolean> {
     val key = remember(screenContextName, settingSuffix) { "${screenContextName}${settingSuffix}" }
     return observeBoolean(key, defaultValue).collectAsState(initial = defaultValue)
+}
+
+/**
+ * Transforms a list of enriched measurements into chart series using RAW (original) values.
+ *
+ * Raw values are taken from `measurementWithValues.values`, which always contain
+ * the original, unmodified measurement data.
+ *
+ * @param types The measurement types to include in the series.
+ * @return A list of [ChartSeries] containing raw data points.
+ */
+private fun List<EnrichedMeasurement>.toRawChartSeries(
+    types: List<MeasurementType>
+): List<ChartSeries> {
+    if (isEmpty() || types.isEmpty()) return emptyList()
+
+    return types.mapNotNull { type ->
+        val dateValuePairs = mutableMapOf<LocalDate, Float>()
+
+        forEach { em ->
+            val mwv = em.measurementWithValues
+
+            // For raw data: get values directly from measurementWithValues.values
+            val valueWithType = mwv.values.find { it.type.id == type.id }
+
+            valueWithType?.let { vt ->
+                val yValue = when (type.inputType) {
+                    InputFieldType.FLOAT -> vt.value.floatValue
+                    InputFieldType.INT -> vt.value.intValue?.toFloat()
+                    else -> null
+                }
+                yValue?.let {
+                    val date = Instant.ofEpochMilli(mwv.measurement.timestamp)
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate()
+                    dateValuePairs[date] = it
+                }
+            }
+        }
+
+        if (dateValuePairs.isNotEmpty()) {
+            val chartPoints = dateValuePairs.toList()
+                .sortedBy { it.first }
+                .map { (date, value) ->
+                    ChartPoint(
+                        date = date,
+                        x = date.toEpochDay().toFloat(),
+                        y = value
+                    )
+                }
+            ChartSeries(isProjected = false, type = type, points = chartPoints)
+        } else {
+            null
+        }
+    }
+}
+
+/**
+ * Transforms a list of enriched measurements into chart series using SMOOTHED values.
+ *
+ * Smoothed values are taken from `valuesWithTrend`, which may contain modified
+ * (smoothed) values or original values if smoothing hasn't been applied yet.
+ *
+ * Also includes projected (future) data if available.
+ *
+ * @param types The measurement types to include in the series.
+ * @return A list of [ChartSeries] containing smoothed data points and projections.
+ */
+private fun List<EnrichedMeasurement>.toSmoothedChartSeries(
+    types: List<MeasurementType>
+): List<ChartSeries> {
+    if (isEmpty() || types.isEmpty()) return emptyList()
+
+    // Real (historical) series
+    val realSeries = types.mapNotNull { type ->
+        val dateValuePairs = mutableMapOf<LocalDate, Float>()
+
+        forEach { em ->
+            // For smoothed data: get values from valuesWithTrend
+            val valueWithType = em.valuesWithTrend
+                .find { it.currentValue.type.id == type.id }
+                ?.currentValue
+
+            valueWithType?.let { vt ->
+                val yValue = when (type.inputType) {
+                    InputFieldType.FLOAT -> vt.value.floatValue
+                    InputFieldType.INT -> vt.value.intValue?.toFloat()
+                    else -> null
+                }
+                yValue?.let {
+                    val date = Instant.ofEpochMilli(em.measurementWithValues.measurement.timestamp)
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate()
+                    dateValuePairs[date] = it
+                }
+            }
+        }
+
+        if (dateValuePairs.isNotEmpty()) {
+            val chartPoints = dateValuePairs.toList()
+                .sortedBy { it.first }
+                .map { (date, value) ->
+                    ChartPoint(
+                        date = date,
+                        x = date.toEpochDay().toFloat(),
+                        y = value
+                    )
+                }
+            ChartSeries(isProjected = false, type = type, points = chartPoints)
+        } else {
+            null
+        }
+    }
+
+    // Projected (future) series - collect from ALL measurements
+    val allProjections = flatMap { it.measurementWithValuesProjected }
+
+    val projectedSeries = if (allProjections.isNotEmpty()) {
+        val groupedProjections = allProjections.groupBy { it.values.first().type.id }
+
+        types.mapNotNull { type ->
+            val projectedValuesForType = groupedProjections[type.id]
+
+            if (!projectedValuesForType.isNullOrEmpty()) {
+                val chartPoints = projectedValuesForType.map { mwv ->
+                    val date = Instant.ofEpochMilli(mwv.measurement.timestamp)
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate()
+                    ChartPoint(
+                        date = date,
+                        x = date.toEpochDay().toFloat(),
+                        y = mwv.values.first().value.floatValue!!
+                    )
+                }.sortedBy { it.x }
+
+                ChartSeries(isProjected = true, type = type, points = chartPoints)
+            } else {
+                null
+            }
+        }
+    } else {
+        emptyList()
+    }
+
+    return realSeries + projectedSeries
 }
