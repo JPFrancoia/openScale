@@ -64,6 +64,7 @@ import com.health.openscale.ui.components.RoundMeasurementIcon
 import com.health.openscale.ui.shared.SharedViewModel
 import com.health.openscale.ui.screen.components.MeasurementChart
 import com.health.openscale.ui.screen.components.provideFilterTopBarAction
+import com.health.openscale.ui.screen.components.rememberAddMeasurementActionButton
 import com.health.openscale.ui.screen.components.rememberBluetoothActionButton
 import com.health.openscale.ui.screen.components.rememberResolvedTimeRangeState
 import com.health.openscale.ui.screen.settings.BluetoothViewModel
@@ -128,6 +129,7 @@ fun StatisticsScreen(
     val allTypes by sharedViewModel.measurementTypes.collectAsState()
 
     val bluetoothAction = rememberBluetoothActionButton(bluetoothViewModel, sharedViewModel, navController)
+    val addMeasurementAction = rememberAddMeasurementActionButton(sharedViewModel, navController)
 
     val filterAction = provideFilterTopBarAction(
         sharedViewModel = sharedViewModel,
@@ -139,7 +141,7 @@ fun StatisticsScreen(
 
     LaunchedEffect(filterAction, title) {
         sharedViewModel.setTopBarTitle(title)
-        sharedViewModel.setTopBarActions(listOfNotNull(bluetoothAction, filterAction))
+        sharedViewModel.setTopBarActions(listOfNotNull(bluetoothAction, addMeasurementAction, filterAction))
     }
 
     val relevantTypes = remember(allTypes) {

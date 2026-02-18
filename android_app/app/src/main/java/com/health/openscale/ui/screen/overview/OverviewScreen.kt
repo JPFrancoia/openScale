@@ -117,6 +117,7 @@ import com.health.openscale.ui.screen.settings.BluetoothViewModel
 import com.health.openscale.ui.screen.components.MeasurementChart
 import com.health.openscale.ui.screen.components.UserGoalChip
 import com.health.openscale.ui.screen.components.provideFilterTopBarAction
+import com.health.openscale.ui.screen.components.rememberAddMeasurementActionButton
 import com.health.openscale.ui.screen.components.rememberBluetoothActionButton
 import com.health.openscale.ui.screen.dialog.DeleteConfirmationDialog
 import com.health.openscale.ui.screen.dialog.UserGoalDialog
@@ -165,6 +166,7 @@ fun OverviewScreen(
     }
 
     val bluetoothAction = rememberBluetoothActionButton(bluetoothViewModel, sharedViewModel, navController)
+    val addMeasurementAction = rememberAddMeasurementActionButton(sharedViewModel, navController)
 
     // Time filter action for the top bar, specific to this screen's context
     val timeFilterAction = provideFilterTopBarAction(
@@ -242,33 +244,22 @@ fun OverviewScreen(
         selectedUserId,
         bluetoothAction,
         timeFilterAction
-    ) {fun updateTopBar() {
-        sharedViewModel.setTopBarTitle(context.getString(R.string.route_title_overview))
-        val actions = mutableListOf<TopBarAction>()
+    ) {
+        fun updateTopBar() {
+            sharedViewModel.setTopBarTitle(context.getString(R.string.route_title_overview))
+            val actions = mutableListOf<TopBarAction>()
 
-        // 0. Add the central Bluetooth action
-        bluetoothAction?.let { actions.add(it) }
+            // 0. Add the central Bluetooth action
+            actions.add(bluetoothAction)
 
-        // 1. Add "Add Measurement" icon
-        actions.add(
-            TopBarAction(
-                icon = Icons.Default.Add,
-                contentDescription = context.getString(R.string.action_add_measurement_desc),
-                onClick = {
-                    if (selectedUserId != null) {
-                        navController.navigate(Routes.measurementDetail(measurementId = null, userId = selectedUserId!!))
-                    } else {
-                        Toast.makeText(context, context.getString(R.string.toast_select_user_first), Toast.LENGTH_SHORT).show()
-                    }
-                }
-            )
-        )
+            // 1. Add "Add Measurement" icon
+            actions.add(addMeasurementAction)
 
-        // 2. Add Time Filter
-        timeFilterAction?.let { actions.add(it) }
+            // 2. Add Time Filter
+            timeFilterAction?.let { actions.add(it) }
 
-        sharedViewModel.setTopBarActions(actions)
-    }
+            sharedViewModel.setTopBarActions(actions)
+        }
 
         updateTopBar()
 

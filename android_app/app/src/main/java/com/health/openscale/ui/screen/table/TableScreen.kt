@@ -87,6 +87,7 @@ import com.health.openscale.ui.navigation.Routes
 import com.health.openscale.ui.screen.components.MeasurementTypeFilterRow
 import com.health.openscale.ui.shared.SharedViewModel
 import com.health.openscale.core.utils.LocaleUtils
+import com.health.openscale.ui.screen.components.rememberAddMeasurementActionButton
 import com.health.openscale.ui.screen.components.rememberBluetoothActionButton
 import com.health.openscale.ui.screen.dialog.DeleteConfirmationDialog
 import com.health.openscale.ui.screen.dialog.UserInputDialog
@@ -159,6 +160,7 @@ fun TableScreen(
     val userEvaluationContext by sharedViewModel.userEvaluationContext.collectAsState()
 
     val bluetoothAction = rememberBluetoothActionButton(bluetoothViewModel, sharedViewModel, navController)
+    val addMeasurementAction = rememberAddMeasurementActionButton(sharedViewModel, navController)
 
     // Column selection state provided by filter row.
     val selectedColumnIdsFromFilter = remember { mutableStateListOf<Int>() }
@@ -496,7 +498,8 @@ fun TableScreen(
 
             val actions = mutableListOf<TopBarAction>()
 
-            bluetoothAction?.let { actions.add(it) }
+            actions.add(bluetoothAction)
+            actions.add(addMeasurementAction)
 
             if (!enrichedMeasurements.isEmpty()) {
                 actions.add(

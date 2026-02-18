@@ -47,6 +47,7 @@ import com.health.openscale.ui.navigation.Routes
 import com.health.openscale.ui.shared.SharedViewModel
 import com.health.openscale.ui.screen.components.MeasurementChart
 import com.health.openscale.ui.screen.components.provideFilterTopBarAction
+import com.health.openscale.ui.screen.components.rememberAddMeasurementActionButton
 import com.health.openscale.ui.screen.components.rememberBluetoothActionButton
 import com.health.openscale.ui.screen.dialog.DeleteConfirmationDialog
 import com.health.openscale.ui.screen.overview.MeasurementValueRow
@@ -86,6 +87,7 @@ fun GraphScreen(
     val doubleTapWindowMs = 600L
 
     val bluetoothAction = rememberBluetoothActionButton(bluetoothViewModel, sharedViewModel, navController)
+    val addMeasurementAction = rememberAddMeasurementActionButton(sharedViewModel, navController)
 
     val timeFilterAction = provideFilterTopBarAction(
         sharedViewModel = sharedViewModel,
@@ -94,7 +96,7 @@ fun GraphScreen(
 
     LaunchedEffect(timeFilterAction) {
         sharedViewModel.setTopBarTitle(context.getString(R.string.route_title_graph))
-        sharedViewModel.setTopBarActions(listOfNotNull(bluetoothAction, timeFilterAction))
+        sharedViewModel.setTopBarActions(listOfNotNull(bluetoothAction, addMeasurementAction, timeFilterAction))
     }
 
     val sheetEnrichedMeasurement = remember(sheetMeasurementId, allMeasurementsWithValues) {
