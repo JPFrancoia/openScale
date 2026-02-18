@@ -20,8 +20,10 @@ package com.health.openscale.core.facade
 import android.app.Application
 import android.bluetooth.BluetoothManager
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import com.health.openscale.core.bluetooth.BluetoothEvent
 import com.health.openscale.core.bluetooth.ScaleFactory
 import com.health.openscale.core.bluetooth.data.ScaleUser
@@ -114,6 +116,19 @@ class BluetoothFacade @Inject constructor(
     fun setSavedTuning(profile: TuningProfile) {
         scope.launch {
             settingsFacade.saveBluetoothTuneProfile(profile.name)
+        }
+    }
+
+    @Composable
+    fun DeviceConfigurationUi() {
+        val device by savedDevice.collectAsState()
+
+        device?.let { dev ->
+            // Create or remember the communicator for the current saved device
+            val communicator = remember(dev) { scaleFactory.createCommunicator(dev) }
+
+            // Render the device-specific UI directly from the communicator
+            communicator?.DeviceConfigurationUi()
         }
     }
 

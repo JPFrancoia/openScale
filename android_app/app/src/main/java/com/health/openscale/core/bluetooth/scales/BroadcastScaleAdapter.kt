@@ -19,6 +19,7 @@ package com.health.openscale.core.bluetooth.scales
 
 import android.bluetooth.le.ScanResult
 import android.os.SystemClock
+import androidx.compose.runtime.Composable
 import com.health.openscale.R
 import com.health.openscale.core.bluetooth.BluetoothEvent
 import com.health.openscale.core.bluetooth.data.ScaleUser
@@ -126,6 +127,12 @@ class BroadcastScaleAdapter(
         }
     }
 
+    @Composable
+    override fun DeviceConfigurationUi() {
+        // Delegate to the actual protocol handler
+        handler.DeviceConfigurationUi()
+    }
+
     private fun ensureCentral() {
         if (!::central.isInitialized) {
             central = BluetoothCentralManager(context, centralCallback, mainHandler)
@@ -137,7 +144,6 @@ class BroadcastScaleAdapter(
         val driverSettings = FacadeDriverSettings(
             facade = settingsFacade,
             scope = scope,
-            deviceAddress = address,
             handlerNamespace = handler::class.simpleName ?: "Handler"
         )
         handler.attach(noopTransport, appCallbacks, driverSettings, dataProvider)

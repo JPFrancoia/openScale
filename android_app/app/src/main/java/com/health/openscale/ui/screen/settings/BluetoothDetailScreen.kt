@@ -46,7 +46,6 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
@@ -139,6 +138,13 @@ fun BluetoothDetailScreen(
             .padding(all = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        SettingsSectionTitle(title = stringResource(R.string.scale_configuration_title))
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                bluetoothViewModel.DeviceConfigurationUi()
+            }
+        }
+
         // --- DEVICE TUNING SECTION ---
         SettingsSectionTitle(title = stringResource(R.string.bluetooth_tuning_title))
         ExposedDropdownMenuBox(
