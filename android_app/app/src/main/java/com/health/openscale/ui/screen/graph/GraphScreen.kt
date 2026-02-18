@@ -47,8 +47,10 @@ import com.health.openscale.ui.navigation.Routes
 import com.health.openscale.ui.shared.SharedViewModel
 import com.health.openscale.ui.screen.components.MeasurementChart
 import com.health.openscale.ui.screen.components.provideFilterTopBarAction
+import com.health.openscale.ui.screen.components.rememberBluetoothActionButton
 import com.health.openscale.ui.screen.dialog.DeleteConfirmationDialog
 import com.health.openscale.ui.screen.overview.MeasurementValueRow
+import com.health.openscale.ui.screen.settings.BluetoothViewModel
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -58,7 +60,8 @@ import java.util.Locale
 @Composable
 fun GraphScreen(
     navController: NavController,
-    sharedViewModel: SharedViewModel
+    sharedViewModel: SharedViewModel,
+    bluetoothViewModel: BluetoothViewModel
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -82,6 +85,8 @@ fun GraphScreen(
     var lastTapAt by rememberSaveable { mutableStateOf(0L) }
     val doubleTapWindowMs = 600L
 
+    val bluetoothAction = rememberBluetoothActionButton(bluetoothViewModel, sharedViewModel, navController)
+
     val timeFilterAction = provideFilterTopBarAction(
         sharedViewModel = sharedViewModel,
         screenContextName = SettingsPreferenceKeys.GRAPH_SCREEN_CONTEXT
@@ -89,7 +94,7 @@ fun GraphScreen(
 
     LaunchedEffect(timeFilterAction) {
         sharedViewModel.setTopBarTitle(context.getString(R.string.route_title_graph))
-        sharedViewModel.setTopBarActions(listOfNotNull(timeFilterAction))
+        sharedViewModel.setTopBarActions(listOfNotNull(bluetoothAction, timeFilterAction))
     }
 
     val sheetEnrichedMeasurement = remember(sheetMeasurementId, allMeasurementsWithValues) {

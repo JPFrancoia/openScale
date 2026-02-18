@@ -17,17 +17,7 @@
  */
 package com.health.openscale.ui.screen.overview
 
-import android.Manifest
-import android.app.Activity
-import android.bluetooth.BluetoothAdapter
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.widget.Toast
-import androidx.activity.compose.ManagedActivityResultLauncher
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.ActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -53,14 +43,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.BluetoothConnected
-import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error
@@ -79,7 +65,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.surfaceColorAtElevation
@@ -88,7 +73,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -107,20 +91,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.health.openscale.R
-import com.health.openscale.core.data.ConnectionStatus
 import com.health.openscale.core.data.EvaluationState
 import com.health.openscale.core.data.InputFieldType
-import com.health.openscale.core.data.MeasurementTypeIcon
 import com.health.openscale.core.data.MeasurementTypeKey
 import com.health.openscale.core.data.Trend
 import com.health.openscale.core.data.UnitType
-import com.health.openscale.core.data.User
 import com.health.openscale.core.data.UserGoals
 import com.health.openscale.core.model.MeasurementWithValues
 import com.health.openscale.core.facade.SettingsPreferenceKeys
@@ -129,7 +109,6 @@ import com.health.openscale.core.model.UserEvaluationContext
 import com.health.openscale.core.model.ValueWithDifference
 import com.health.openscale.core.utils.ConverterUtils
 import com.health.openscale.core.utils.LocaleUtils
-import com.health.openscale.core.utils.LogManager
 import com.health.openscale.ui.components.LinearGauge
 import com.health.openscale.ui.components.RoundMeasurementIcon
 import com.health.openscale.ui.navigation.Routes
@@ -138,9 +117,9 @@ import com.health.openscale.ui.screen.settings.BluetoothViewModel
 import com.health.openscale.ui.screen.components.MeasurementChart
 import com.health.openscale.ui.screen.components.UserGoalChip
 import com.health.openscale.ui.screen.components.provideFilterTopBarAction
+import com.health.openscale.ui.screen.components.rememberBluetoothActionButton
 import com.health.openscale.ui.screen.dialog.DeleteConfirmationDialog
 import com.health.openscale.ui.screen.dialog.UserGoalDialog
-import com.health.openscale.ui.screen.dialog.UserInputDialog
 import com.health.openscale.ui.shared.TopBarAction
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -153,163 +132,6 @@ import kotlin.collections.firstOrNull
 import kotlin.collections.isNotEmpty
 import kotlin.let
 import kotlin.math.abs
-
-/**
- * Determines the appropriate top bar action based on the Bluetooth connection status.
- * Uses the [SharedViewModel] to display Snackbars for user feedback.
- *
- * @param context The application context.
- * @param savedAddr The address of the currently saved Bluetooth scale, if any.
- * @param connStatusEnum The current connection status to the scale.
- * @param connectedDevice The address of the currently connected device, if any.
- * @param currentNavController The NavController for navigation actions.
- * @param bluetoothViewModel The ViewModel for controlling Bluetooth actions.
- * @param sharedViewModel The SharedViewModel for triggering global Snackbars.
- * @param currentDeviceName The name of the saved scale for more user-friendly messages.
- * @return A [SharedViewModel.TopBarAction] instance or null if no specific action is required.
- */
-fun determineBluetoothTopBarAction(
-    context : Context,
-    savedAddr: String?,
-    connStatusEnum: ConnectionStatus,
-    connectedDevice: String?,
-    currentNavController: NavController,
-    bluetoothViewModel: BluetoothViewModel,
-    sharedViewModel: SharedViewModel,
-    currentDeviceName: String?,
-    permissionsLauncher: ManagedActivityResultLauncher<Array<String>, Map<String, @JvmSuppressWildcards Boolean>>,
-    enableBluetoothLauncher: ManagedActivityResultLauncher<Intent, ActivityResult>,
-    currentUserForAssistedWeighing: User?,
-    onShowReferenceDialog: (user: User) -> Unit
-): TopBarAction? {
-    val TAG = "BluetoothTopBar"
-    val deviceNameForMessage = currentDeviceName ?: context.getString(R.string.fallback_device_name_saved_scale)
-
-    // Busy while connecting/disconnecting to the currently saved device
-    val isBusy = savedAddr != null &&
-            (connStatusEnum == ConnectionStatus.CONNECTING || connStatusEnum == ConnectionStatus.DISCONNECTING) &&
-            (connectedDevice == savedAddr || connStatusEnum == ConnectionStatus.CONNECTING ||
-                    (connStatusEnum == ConnectionStatus.DISCONNECTING && connectedDevice == savedAddr))
-
-    // Helper to request enabling Bluetooth (actual connect is done in onActivityResult when OK)
-    val requestEnableBluetooth = {
-        val intent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-        enableBluetoothLauncher.launch(intent)
-    }
-
-    // Helper to request runtime permissions (actual connect is done in onResult when granted)
-    val requestBtPermissions = {
-        permissionsLauncher.launch(
-            arrayOf(
-                Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.BLUETOOTH_CONNECT
-            )
-        )
-    }
-
-    return when {
-        // 1) Show non-interactive feedback while a user-initiated operation is ongoing
-        isBusy -> TopBarAction(
-            icon = Icons.AutoMirrored.Filled.BluetoothSearching,
-            contentDescription = context.getString(R.string.bluetooth_action_connecting_disconnecting_desc),
-            onClick = {
-                sharedViewModel.showSnackbar(
-                    message = context.getString(
-                        when (connStatusEnum) {
-                            ConnectionStatus.CONNECTING    -> R.string.snackbar_bluetooth_connecting_to
-                            ConnectionStatus.DISCONNECTING -> R.string.snackbar_bluetooth_disconnecting_from
-                            else                           -> R.string.snackbar_bluetooth_processing_with
-                        },
-                        deviceNameForMessage
-                    ),
-                    duration = SnackbarDuration.Short
-                )
-            }
-        )
-
-        // 2) No saved device → navigate to Bluetooth settings
-        savedAddr == null -> TopBarAction(
-            icon = Icons.Default.Bluetooth,
-            contentDescription = context.getString(R.string.bluetooth_action_no_scale_saved_desc),
-            onClick = {
-                sharedViewModel.setPendingReferenceUserForBle(null)
-                sharedViewModel.showSnackbar(
-                    message = context.getString(R.string.snackbar_bluetooth_no_scale_saved),
-                    duration = SnackbarDuration.Short
-                )
-                currentNavController.navigate(Routes.BLUETOOTH_SETTINGS)
-            }
-        )
-
-        // 3) Connected → offer disconnect
-        savedAddr == connectedDevice && connStatusEnum == ConnectionStatus.CONNECTED -> TopBarAction(
-            icon = Icons.Filled.BluetoothConnected,
-            contentDescription = context.getString(R.string.bluetooth_action_disconnect_desc, deviceNameForMessage),
-            onClick = {
-                sharedViewModel.setPendingReferenceUserForBle(null)
-                bluetoothViewModel.disconnectDevice()
-                sharedViewModel.showSnackbar(
-                    message = context.getString(R.string.snackbar_bluetooth_disconnecting_from, deviceNameForMessage),
-                    duration = SnackbarDuration.Short
-                )
-            }
-        )
-
-        // 4) Disconnected / Idle / None / Failed → guarded connect (request first, connect later via callbacks)
-        savedAddr != null && (
-                connStatusEnum == ConnectionStatus.DISCONNECTED ||
-                        connStatusEnum == ConnectionStatus.IDLE ||
-                        connStatusEnum == ConnectionStatus.NONE ||
-                        connStatusEnum == ConnectionStatus.FAILED
-                ) -> TopBarAction(
-            icon = Icons.Filled.BluetoothDisabled,
-            contentDescription = context.getString(R.string.bluetooth_action_connect_to_desc, deviceNameForMessage),
-            onClick = onClick@{
-                val hasPermissions =
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
-                            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
-
-                if (!hasPermissions) {
-                    requestBtPermissions()
-                    return@onClick
-                }
-                if (!bluetoothViewModel.isBluetoothEnabled()) {
-                    requestEnableBluetooth()
-                    return@onClick
-                }
-
-                if (currentUserForAssistedWeighing != null && currentUserForAssistedWeighing.useAssistedWeighing) {
-                    sharedViewModel.setPendingReferenceUserForBle(null)
-                    onShowReferenceDialog(currentUserForAssistedWeighing)
-                } else {
-                    sharedViewModel.setPendingReferenceUserForBle(null)
-
-                    sharedViewModel.showSnackbar(
-                        message = context.getString(R.string.snackbar_bluetooth_attempting_connection, deviceNameForMessage),
-                        duration = SnackbarDuration.Short
-                    )
-                    LogManager.d(TAG, "User clicked bluetooth icon connect → trying to connect to saved device $deviceNameForMessage")
-
-                    bluetoothViewModel.connectToSavedDevice()
-                }
-            }
-        )
-
-        // 5) Fallback
-        else -> TopBarAction(
-            icon = Icons.Default.Bluetooth,
-            contentDescription = context.getString(R.string.bluetooth_action_check_settings_desc),
-            onClick = {
-                sharedViewModel.setPendingReferenceUserForBle(null)
-                sharedViewModel.showSnackbar(
-                    message = context.getString(R.string.snackbar_bluetooth_check_settings),
-                    duration = SnackbarDuration.Short
-                )
-                currentNavController.navigate(Routes.BLUETOOTH_SETTINGS)
-            }
-        )
-    }
-}
 
 /**
  * The main screen for displaying an overview of measurements, user status, and Bluetooth controls.
@@ -342,13 +164,14 @@ fun OverviewScreen(
         localSplitterWeight = splitterWeight
     }
 
+    val bluetoothAction = rememberBluetoothActionButton(bluetoothViewModel, sharedViewModel, navController)
+
     // Time filter action for the top bar, specific to this screen's context
     val timeFilterAction = provideFilterTopBarAction(
         sharedViewModel = sharedViewModel,
         screenContextName = SettingsPreferenceKeys.OVERVIEW_SCREEN_CONTEXT
     )
     val overviewState by sharedViewModel.overviewUiState.collectAsState()
-    val hasData = (overviewState as? SharedViewModel.UiState.Success)?.data?.isNotEmpty() == true
 
     // --- Chart selection logic reverted to local state management ---
     val allMeasurementTypes by sharedViewModel.measurementTypes.collectAsState()
@@ -362,20 +185,7 @@ fun OverviewScreen(
         initial = true
     )
 
-    val localSelectedOverviewGraphTypeIntIds = remember { mutableStateListOf<Int>() }
-
-    // Derived list of MeasurementType objects that are selected for the chart.
-    val selectedLineTypesForOverviewChart = remember(allMeasurementTypes, localSelectedOverviewGraphTypeIntIds.toList()) {
-        allMeasurementTypes.filter { type ->
-            type.id in localSelectedOverviewGraphTypeIntIds &&
-                    type.isEnabled && // Ensure the type is globally enabled
-                    (type.inputType == InputFieldType.FLOAT || type.inputType == InputFieldType.INT) // Ensure it's a plottable type
-        }
-    }
-
     val userEvalContext by sharedViewModel.userEvaluationContext.collectAsState()
-    var showReferenceDialogForUser by remember { mutableStateOf<User?>(null) }
-    val allUsers by sharedViewModel.allUsers.collectAsState(initial = emptyList())
     val currentSelectedUser by sharedViewModel.selectedUser.collectAsState()
     var currentSelectedMeasurementId by rememberSaveable { mutableStateOf<Int?>(null) }
 
@@ -424,155 +234,41 @@ fun OverviewScreen(
 
     // --- End of reverted chart selection logic ---
 
-    val savedDevice by bluetoothViewModel.savedDevice.collectAsState()
-    val connectionStatus by bluetoothViewModel.connectionStatus.collectAsState()
-    val connectedDeviceAddr by bluetoothViewModel.connectedDeviceAddress.collectAsState()
-
-    val savedDeviceNameString = savedDevice?.name.orEmpty()
-    val savedDeviceAddress    = savedDevice?.address
-
-    val enableBluetoothLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val hasPermissions =
-                ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
-                        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
-
-            if (hasPermissions) {
-                bluetoothViewModel.connectToSavedDevice()
-            } else {
-                sharedViewModel.showSnackbar(
-                    message = context.getString(R.string.bluetooth_enabled_permissions_missing),
-                    duration = SnackbarDuration.Long
-                )
-            }
-        } else {
-            sharedViewModel.showSnackbar(
-                message = context.getString(R.string.bluetooth_permissions_required_for_scan),
-                duration = SnackbarDuration.Long
-            )
-        }
-    }
-
-    val permissionsLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { result ->
-        val allGranted = result.values.all { it }
-        if (allGranted) {
-            if (bluetoothViewModel.isBluetoothEnabled()) {
-                bluetoothViewModel.connectToSavedDevice()
-            } else {
-                val intent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                enableBluetoothLauncher.launch(intent)
-            }
-        } else {
-            sharedViewModel.showSnackbar(
-                messageResId = R.string.bluetooth_permissions_required_for_scan
-            )
-        }
-    }
-
-    showReferenceDialogForUser?.let { currentTargetUser ->
-        val availableReferenceUsers = allUsers.filter { user ->
-            user.id != currentTargetUser.id && !user.useAssistedWeighing
-        }
-        if (availableReferenceUsers.isEmpty()) {
-            LaunchedEffect(currentTargetUser) {
-                sharedViewModel.showSnackbar(messageResId = R.string.error_no_reference_users_available)
-                showReferenceDialogForUser = null
-                sharedViewModel.setPendingReferenceUserForBle(null)
-            }
-        } else {
-            UserInputDialog(
-                title = stringResource(R.string.dialog_title_select_reference_user_for, currentTargetUser.name),
-                users = availableReferenceUsers,
-                initialSelectedId = availableReferenceUsers.firstOrNull()?.id,
-                measurementIcon = MeasurementTypeIcon.IC_USER,
-                iconBackgroundColor = MaterialTheme.colorScheme.primaryContainer,
-                onDismiss = {
-                    showReferenceDialogForUser = null
-                    sharedViewModel.setPendingReferenceUserForBle(null)
-                },
-                onConfirm = { selectedUserId ->
-                    showReferenceDialogForUser = null
-                    val selectedReferenceUser = availableReferenceUsers.find { it.id == selectedUserId }
-                    if (selectedReferenceUser != null) {
-                        sharedViewModel.setPendingReferenceUserForBle(selectedReferenceUser)
-
-                        val deviceNameForMessage = savedDeviceNameString
-                        sharedViewModel.showSnackbar(
-                            message = context.getString(R.string.snackbar_bluetooth_attempting_connection, deviceNameForMessage),
-                            duration = SnackbarDuration.Short
-                        )
-                        bluetoothViewModel.connectToSavedDevice()
-                    } else {
-                        sharedViewModel.setPendingReferenceUserForBle(null)
-                    }
-                }
-            )
-        }
-    }
-
-    // Determine the Bluetooth action for the top bar
-    val bluetoothTopBarAction = determineBluetoothTopBarAction(
-        context = context,
-        savedAddr = savedDeviceAddress,
-        connStatusEnum = connectionStatus,
-        connectedDevice = connectedDeviceAddr,
-        currentNavController = navController,
-        bluetoothViewModel = bluetoothViewModel,
-        sharedViewModel = sharedViewModel,
-        currentDeviceName = savedDeviceNameString,
-        permissionsLauncher = permissionsLauncher,
-        enableBluetoothLauncher = enableBluetoothLauncher,
-        currentUserForAssistedWeighing = currentSelectedUser,
-        onShowReferenceDialog = { user ->
-            showReferenceDialogForUser = user
-        }
-    )
-
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // DisposableEffect to configure the top bar based on the current state
     DisposableEffect(
         lifecycleOwner,
         selectedUserId,
-        hasData,
-        bluetoothTopBarAction,
-        selectedLineTypesForOverviewChart.isNotEmpty(),
-        timeFilterAction,
-        savedDeviceAddress,
-        connectionStatus,
-        connectedDeviceAddr
-    ) {
-        fun updateTopBar() {
-            sharedViewModel.setTopBarTitle(context.getString(R.string.route_title_overview))
-            val actions = mutableListOf<TopBarAction>()
+        bluetoothAction,
+        timeFilterAction
+    ) {fun updateTopBar() {
+        sharedViewModel.setTopBarTitle(context.getString(R.string.route_title_overview))
+        val actions = mutableListOf<TopBarAction>()
 
-            // 0. Add Bluetooth action (if determined) at the beginning
-            bluetoothTopBarAction?.let { btAction ->
-                actions.add(btAction)
-            }
+        // 0. Add the central Bluetooth action
+        bluetoothAction?.let { actions.add(it) }
 
-            // 1. Add "Add Measurement" icon
-            actions.add(
-                TopBarAction(
-                    icon = Icons.Default.Add,
-                    contentDescription = context.getString(R.string.action_add_measurement_desc),
-                    onClick = {
-                        if (selectedUserId != null) {
-                            navController.navigate(Routes.measurementDetail(measurementId = null, userId = selectedUserId!!))
-                        } else {
-                            Toast.makeText(context, context.getString(R.string.toast_select_user_first), Toast.LENGTH_SHORT).show()
-                        }
+        // 1. Add "Add Measurement" icon
+        actions.add(
+            TopBarAction(
+                icon = Icons.Default.Add,
+                contentDescription = context.getString(R.string.action_add_measurement_desc),
+                onClick = {
+                    if (selectedUserId != null) {
+                        navController.navigate(Routes.measurementDetail(measurementId = null, userId = selectedUserId!!))
+                    } else {
+                        Toast.makeText(context, context.getString(R.string.toast_select_user_first), Toast.LENGTH_SHORT).show()
                     }
-                )
+                }
             )
+        )
 
-            timeFilterAction?.let { actions.add(it) }
-            sharedViewModel.setTopBarActions(actions)
-        }
+        // 2. Add Time Filter
+        timeFilterAction?.let { actions.add(it) }
+
+        sharedViewModel.setTopBarActions(actions)
+    }
 
         updateTopBar()
 

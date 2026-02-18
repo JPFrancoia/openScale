@@ -107,6 +107,24 @@ class SharedViewModel @Inject constructor(
         _isInContextualSelectionMode.value = isActive
     }
 
+    // --- Bluetooth Assisted Weighing State ---
+    private val _pendingAssistedWeighingUser = MutableStateFlow<User?>(null)
+    /**
+     * State to trigger the global Assisted Weighing dialog.
+     * When not null, the UI should show the confirmation dialog for this user.
+     */
+    val pendingAssistedWeighingUser = _pendingAssistedWeighingUser.asStateFlow()
+
+    fun setPendingAssistedWeighingUser(user: User?) {
+        _pendingAssistedWeighingUser.value = user
+    }
+
+    fun setPendingReferenceUserForBle(referenceUser: User?) {
+        viewModelScope.launch {
+            measurementFacade.setPendingReferenceUserForBle(referenceUser)
+        }
+    }
+
     // --- Snackbar events ---
     private val _snackbarEvents = MutableSharedFlow<SnackbarEvent>(replay = 0, extraBufferCapacity = 1)
     val snackbarEvents: SharedFlow<SnackbarEvent> = _snackbarEvents.asSharedFlow()
@@ -408,12 +426,6 @@ class SharedViewModel @Inject constructor(
     // --- Helpers ---
     fun findClosestMeasurement(selectedTimestamp: Long, items: List<MeasurementWithValues>) =
         measurementFacade.findClosestMeasurement(selectedTimestamp, items)
-
-    fun setPendingReferenceUserForBle(referenceUser: User?) {
-        viewModelScope.launch {
-            measurementFacade.setPendingReferenceUserForBle(referenceUser)
-        }
-    }
 
     // --- Init: restore last selected user or pick first (via UserFacade) ---
     init {

@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -86,8 +87,10 @@ import com.health.openscale.ui.navigation.Routes
 import com.health.openscale.ui.screen.components.MeasurementTypeFilterRow
 import com.health.openscale.ui.shared.SharedViewModel
 import com.health.openscale.core.utils.LocaleUtils
+import com.health.openscale.ui.screen.components.rememberBluetoothActionButton
 import com.health.openscale.ui.screen.dialog.DeleteConfirmationDialog
 import com.health.openscale.ui.screen.dialog.UserInputDialog
+import com.health.openscale.ui.screen.settings.BluetoothViewModel
 import com.health.openscale.ui.shared.TopBarAction
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -146,13 +149,16 @@ data class TableRowDataInternal(
 @Composable
 fun TableScreen(
     navController: NavController,
-    sharedViewModel: SharedViewModel
+    sharedViewModel: SharedViewModel,
+    bluetoothViewModel: BluetoothViewModel
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val enrichedMeasurements by sharedViewModel.enrichedMeasurementsFlow.collectAsState()
     val allAvailableTypesFromVM by sharedViewModel.measurementTypes.collectAsState()
     val userEvaluationContext by sharedViewModel.userEvaluationContext.collectAsState()
+
+    val bluetoothAction = rememberBluetoothActionButton(bluetoothViewModel, sharedViewModel, navController)
 
     // Column selection state provided by filter row.
     val selectedColumnIdsFromFilter = remember { mutableStateListOf<Int>() }
@@ -427,7 +433,7 @@ fun TableScreen(
         )
     }
 
-    LaunchedEffect(Unit, tableScreenTitle, isInSelectionMode, selectedItemIds.toList(), enrichedMeasurements) {
+    LaunchedEffect(Unit, tableScreenTitle, isInSelectionMode, selectedItemIds.toList(), enrichedMeasurements, bluetoothAction) {
         sharedViewModel.setContextualSelectionMode(isInSelectionMode)
 
         if (isInSelectionMode) {
@@ -487,9 +493,13 @@ fun TableScreen(
         } else {
             sharedViewModel.setTopBarTitle(tableScreenTitle)
 
-            val defaultActions = mutableListOf<TopBarAction>()
+
+            val actions = mutableListOf<TopBarAction>()
+
+            bluetoothAction?.let { actions.add(it) }
+
             if (!enrichedMeasurements.isEmpty()) {
-                defaultActions.add(
+                actions.add(
                     TopBarAction(
                         icon = Icons.Outlined.CheckBox,
                         contentDescriptionResId = R.string.desc_enter_selection_mode,
@@ -498,7 +508,7 @@ fun TableScreen(
                 )
             }
 
-            sharedViewModel.setTopBarActions(defaultActions)
+            sharedViewModel.setTopBarActions(actions)
         }
     }
 

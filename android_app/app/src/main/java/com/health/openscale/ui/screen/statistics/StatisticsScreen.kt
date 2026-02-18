@@ -53,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
 import com.health.openscale.R
 import com.health.openscale.core.data.InputFieldType
 import com.health.openscale.core.data.MeasurementType
@@ -63,7 +64,9 @@ import com.health.openscale.ui.components.RoundMeasurementIcon
 import com.health.openscale.ui.shared.SharedViewModel
 import com.health.openscale.ui.screen.components.MeasurementChart
 import com.health.openscale.ui.screen.components.provideFilterTopBarAction
+import com.health.openscale.ui.screen.components.rememberBluetoothActionButton
 import com.health.openscale.ui.screen.components.rememberResolvedTimeRangeState
+import com.health.openscale.ui.screen.settings.BluetoothViewModel
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -105,7 +108,11 @@ data class MeasurementStatistics(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StatisticsScreen(sharedViewModel: SharedViewModel) {
+fun StatisticsScreen(
+    navController: NavController,
+    sharedViewModel: SharedViewModel,
+    bluetoothViewModel: BluetoothViewModel
+) {
 
     val timeRangeState by rememberResolvedTimeRangeState(
         screenContextName = SettingsPreferenceKeys.STATISTICS_SCREEN_CONTEXT,
@@ -120,6 +127,8 @@ fun StatisticsScreen(sharedViewModel: SharedViewModel) {
 
     val allTypes by sharedViewModel.measurementTypes.collectAsState()
 
+    val bluetoothAction = rememberBluetoothActionButton(bluetoothViewModel, sharedViewModel, navController)
+
     val filterAction = provideFilterTopBarAction(
         sharedViewModel = sharedViewModel,
         screenContextName = SettingsPreferenceKeys.STATISTICS_SCREEN_CONTEXT
@@ -130,7 +139,7 @@ fun StatisticsScreen(sharedViewModel: SharedViewModel) {
 
     LaunchedEffect(filterAction, title) {
         sharedViewModel.setTopBarTitle(title)
-        sharedViewModel.setTopBarActions(listOfNotNull(filterAction))
+        sharedViewModel.setTopBarActions(listOfNotNull(bluetoothAction, filterAction))
     }
 
     val relevantTypes = remember(allTypes) {

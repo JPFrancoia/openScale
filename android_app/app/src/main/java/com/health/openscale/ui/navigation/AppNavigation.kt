@@ -109,9 +109,11 @@ import com.health.openscale.BuildConfig
 import com.health.openscale.R
 import com.health.openscale.core.bluetooth.BluetoothEvent.UserInteractionType
 import com.health.openscale.core.data.IconResource
+import com.health.openscale.core.data.MeasurementTypeIcon
 import com.health.openscale.core.data.User
 import com.health.openscale.core.utils.LogManager
 import com.health.openscale.ui.navigation.Routes.getIconForRoute
+import com.health.openscale.ui.screen.dialog.UserInputDialog
 import com.health.openscale.ui.shared.SharedViewModel
 import com.health.openscale.ui.screen.settings.BluetoothViewModel
 import com.health.openscale.ui.screen.graph.GraphScreen
@@ -224,6 +226,53 @@ fun AppNavigation(sharedViewModel: SharedViewModel) {
                 }
                 if (res == SnackbarResult.ActionPerformed) evt.onAction?.invoke()
             }
+        }
+    }
+
+// --- Global Bluetooth Dialogs ---
+
+// --- Global Reference User Selection (Assisted Weighing) ---
+    val pendingAssistedUser by sharedViewModel.pendingAssistedWeighingUser.collectAsState()
+
+    pendingAssistedUser?.let { currentTargetUser ->
+        // Filter users who can serve as a reference (not the user himself, and not someone also using assisted weighing)
+        val availableReferenceUsers = allUsers.filter { user ->
+            user.id != currentTargetUser.id && !user.useAssistedWeighing
+        }
+
+        if (availableReferenceUsers.isEmpty()) {
+            // No one else is there to be a reference
+            LaunchedEffect(currentTargetUser) {
+                sharedViewModel.showSnackbar(messageResId = R.string.error_no_reference_users_available)
+                sharedViewModel.setPendingAssistedWeighingUser(null)
+                sharedViewModel.setPendingReferenceUserForBle(null)
+            }
+        } else {
+            UserInputDialog(
+                title = stringResource(R.string.dialog_title_select_reference_user_for, currentTargetUser.name),
+                users = availableReferenceUsers,
+                initialSelectedId = availableReferenceUsers.firstOrNull()?.id,
+                measurementIcon = MeasurementTypeIcon.IC_USER,
+                iconBackgroundColor = MaterialTheme.colorScheme.primaryContainer,
+                onDismiss = {
+                    sharedViewModel.setPendingAssistedWeighingUser(null)
+                    sharedViewModel.setPendingReferenceUserForBle(null)
+                },
+                onConfirm = { selectedUserId ->
+                    val selectedReferenceUser = availableReferenceUsers.find { it.id == selectedUserId }
+                    if (selectedReferenceUser != null) {
+                        // 1. Set the reference user in the logic
+                        sharedViewModel.setPendingReferenceUserForBle(selectedReferenceUser)
+
+                        // 2. Trigger connection
+                        bluetoothViewModel.connectToSavedDevice()
+                    } else {
+                        sharedViewModel.setPendingReferenceUserForBle(null)
+                    }
+                    // Close the dialog
+                    sharedViewModel.setPendingAssistedWeighingUser(null)
+                }
+            )
         }
     }
 
@@ -578,17 +627,23 @@ fun AppNavigation(sharedViewModel: SharedViewModel) {
                     composable(Routes.GRAPH) {
                         GraphScreen(
                             navController = navController,
-                            sharedViewModel = sharedViewModel
+                            sharedViewModel = sharedViewModel,
+                            bluetoothViewModel = bluetoothViewModel
                         )
                     }
                     composable(Routes.TABLE) {
                         TableScreen(
                             navController = navController,
-                            sharedViewModel = sharedViewModel
+                            sharedViewModel = sharedViewModel,
+                            bluetoothViewModel = bluetoothViewModel
                         )
                     }
                     composable(Routes.STATISTICS) {
-                        StatisticsScreen(sharedViewModel)
+                        StatisticsScreen(
+                            navController = navController,
+                            sharedViewModel = sharedViewModel,
+                            bluetoothViewModel = bluetoothViewModel
+                        )
                     }
                     composable(Routes.SETTINGS) {
                         SettingsScreen(
