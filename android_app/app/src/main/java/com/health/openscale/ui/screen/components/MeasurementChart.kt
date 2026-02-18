@@ -315,8 +315,10 @@ fun MeasurementChart(
             }
         }
 
-        val chartSeries = remember(filteredMeasurements, lineTypesToActuallyPlot) {
-            filteredMeasurements.toSmoothedChartSeries(lineTypesToActuallyPlot)
+        val chartSeries = remember(filteredMeasurements, lineTypesToActuallyPlot, targetMeasurementTypeId) {
+            val series = filteredMeasurements.toSmoothedChartSeries(lineTypesToActuallyPlot)
+            // In statistics mode, filter out projections
+            if (targetMeasurementTypeId != null) series.filter { !it.isProjected } else series
         }
         val rawChartSeries = remember(filteredMeasurements, lineTypesToActuallyPlot) {
             filteredMeasurements.toRawChartSeries(lineTypesToActuallyPlot)
